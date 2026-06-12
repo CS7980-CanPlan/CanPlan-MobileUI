@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "CanPlan 2.0",
+    "slug": "canplan-mobile-ui",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.canplan.mobileui"
+    },
+    "android": {
+      "package": "com.canplan.mobileui"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
