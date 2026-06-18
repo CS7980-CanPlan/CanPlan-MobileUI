@@ -1,11 +1,11 @@
 /**
  * Domain types for the CanPlan 2.0 Mobile UI.
  *
- * These mirror the shapes we expect to receive from the future AWS AppSync
- * GraphQL backend, and are intentionally identical to the types used by the
- * Supporter Web Portal so both clients can consume the same API. They are
- * backend-agnostic so the fake API layer (see `src/api/fakeGraphqlClient.ts`)
- * can be swapped for real AppSync queries without changing component code.
+ * These are the UI-facing domain shapes, intentionally identical to the types
+ * used by the Supporter Web Portal so both clients share a vocabulary. They are
+ * backend-agnostic: each feature's mappers (`src/features/<feature>/mappers`)
+ * convert the raw AppSync GraphQL shapes onto these so components and screens
+ * never see backend types.
  */
 
 /** A person who uses CanPlan and is supported through the portal. */
