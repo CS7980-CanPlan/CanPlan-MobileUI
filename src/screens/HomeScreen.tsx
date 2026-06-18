@@ -34,7 +34,11 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <Header
         title="My day"
-        subtitle={profile ? `Hi, ${profile.fullName.split(' ')[0]}` : undefined}
+        subtitle={
+          profile?.displayName
+            ? `Hi, ${profile.displayName.split(' ')[0]}`
+            : undefined
+        }
       />
 
       <FlatList
@@ -58,7 +62,6 @@ export default function HomeScreen() {
             ) : (
               <View style={styles.summaryGrid}>
                 <SummaryTile label="Tasks today" value={summary.tasksToday} accent={colors.primary} />
-                <SummaryTile label="Steps left" value={summary.stepsRemaining} accent={colors.warning} />
                 <SummaryTile label="Done" value={summary.completedToday} accent={colors.success} />
               </View>
             )}

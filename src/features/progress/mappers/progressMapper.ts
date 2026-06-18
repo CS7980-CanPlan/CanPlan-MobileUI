@@ -19,11 +19,13 @@ export function mapEventType(
       return 'resumed';
     case 'SKIPPED':
       return 'skipped';
-    case 'SYNCED':
-      return 'synced';
     case 'COMPLETED':
-    default:
       return 'completed';
+    case 'SYNCED':
+    default:
+      // Unknown/future backend values fall back to the neutral 'synced' rather
+      // than being mislabeled as a completion.
+      return 'synced';
   }
 }
 

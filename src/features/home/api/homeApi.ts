@@ -14,11 +14,6 @@ import type { MyDaySummary, Task } from '../../../shared/types';
 export function computeDaySummary(tasks: Task[]): MyDaySummary {
   return {
     tasksToday: tasks.length,
-    stepsRemaining: tasks.reduce(
-      (count, task) =>
-        count + task.steps.filter((step) => !step.completed).length,
-      0,
-    ),
     completedToday: tasks.filter((task) => task.status === 'completed').length,
   };
 }

@@ -2,7 +2,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Task } from '../types';
 import { colors, radius, shadow, spacing, typography } from '../theme/tokens';
-import StepIndicator from './StepIndicator';
 
 interface TaskCardProps {
   task: Task;
@@ -26,14 +25,13 @@ const statusMeta: Record<
  */
 export default function TaskCard({ task, onPress }: TaskCardProps) {
   const meta = statusMeta[task.status];
-  const completedSteps = task.steps.filter((step) => step.completed).length;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={() => onPress?.(task)}
       accessibilityRole="button"
-      accessibilityLabel={`${task.title}, ${meta.label}, ${completedSteps} of ${task.steps.length} steps complete`}
+      accessibilityLabel={`${task.title}, ${meta.label}`}
     >
       <View style={styles.headerRow}>
         <Text style={styles.title} numberOfLines={1}>
@@ -47,12 +45,6 @@ export default function TaskCard({ task, onPress }: TaskCardProps) {
           {task.description}
         </Text>
       ) : null}
-
-      <StepIndicator
-        total={task.steps.length}
-        completed={completedSteps}
-        accent={meta.color}
-      />
     </Pressable>
   );
 }

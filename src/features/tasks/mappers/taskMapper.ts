@@ -38,15 +38,12 @@ export function mapAssignmentStatus(
 export function mapTaskStep(step: BackendTaskStep): TaskStep {
   return {
     id: step.stepId,
-    title: step.text,
-    // Per-user step completion comes from progress events, not the step record
-    // itself, so steps default to incomplete here.
-    completed: false,
+    text: step.text,
     order: step.order,
+    expectedDuration: step.expectedDuration ?? undefined,
     // `mediaRefs` are MediaAsset ids; resolving them to viewable URLs is a
     // separate flow (getMediaDownloadUrl) not wired up yet.
-    imageUrl: undefined,
-    audioUrl: undefined,
+    mediaRefs: step.mediaRefs ?? undefined,
   };
 }
 

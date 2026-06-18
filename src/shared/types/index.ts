@@ -8,31 +8,44 @@
  * never see backend types.
  */
 
-/** A person who uses CanPlan and is supported through the portal. */
+/** Backend `UserRole` enum. */
+export type UserRole = 'PRIMARY_USER' | 'SUPPORT_PERSON' | 'ORG_ADMIN';
+
+/**
+ * A person who uses CanPlan. Only fields the backend `UserProfile` actually
+ * returns are modeled here (no avatar / last-active / status — those don't
+ * exist in the backend yet).
+ */
 export interface UserProfile {
+  /** Backend `userId`. */
   id: string;
-  fullName: string;
-  email: string;
-  /** Optional avatar URL; UI falls back to initials when absent. */
-  avatarUrl?: string;
-  /** ISO-8601 timestamp of the user's most recent app activity. */
-  lastActiveAt: string;
-  status: 'active' | 'inactive';
+  /** Backend `displayName`; may be empty if the user has none set. */
+  displayName: string;
+  email?: string;
+  role?: UserRole;
+  organizationId?: string;
+  /** Free-form accessibility preferences (backend `AWSJSON` object). */
+  accessibilitySettings?: Record<string, unknown>;
+  /** ISO-8601 creation timestamp. */
+  createdAt?: string;
 }
 
-/** A single step within a Task. Tasks in CanPlan are broken into steps. */
+/**
+ * A single step within a Task. Only fields the backend `TaskStep` returns are
+ * modeled (the backend has no per-step completion flag, and `mediaRefs` are
+ * MediaAsset ids — resolving them to URLs is a separate flow).
+ */
 export interface TaskStep {
+  /** Backend `stepId`. */
   id: string;
-  title: string;
-  completed: boolean;
-  /** Optional position used to order steps within a task. */
+  /** Backend `text` — the step instruction. */
+  text: string;
+  /** Position used to order steps within a task. */
   order: number;
-  /** Optional text instruction shown to the user during the step. */
-  instructions?: string;
-  /** Optional URL to an image asset (S3 in production). */
-  imageUrl?: string;
-  /** Optional URL to an audio asset (S3 in production). */
-  audioUrl?: string;
+  /** Expected duration in seconds, when provided. */
+  expectedDuration?: number;
+  /** MediaAsset ids attached to this step (resolve via `getMediaDownloadUrl`). */
+  mediaRefs?: string[];
 }
 
 export type TaskStatus = 'not_started' | 'in_progress' | 'completed';
@@ -90,9 +103,12 @@ export interface ProgressEvent {
   occurredAt: string;
 }
 
-/** Summary counts shown to the primary user on the home screen. */
+/**
+ * Summary counts shown to the primary user on the home screen. Both are derived
+ * from the user's assignments (the backend has no per-step completion to count
+ * "steps remaining").
+ */
 export interface MyDaySummary {
   tasksToday: number;
-  stepsRemaining: number;
   completedToday: number;
 }

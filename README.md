@@ -54,7 +54,7 @@ domain types).
 │   ├── shared/
 │   │   ├── api/                 # graphqlClient, authTokenProvider, pagination, errors, healthCheck
 │   │   ├── query/               # queryClient (defaults) + queryKeys (cache keys)
-│   │   ├── components/          # Reusable UI (Header, TaskCard, StepIndicator)
+│   │   ├── components/          # Reusable UI (Header, TaskCard)
 │   │   ├── theme/               # Design tokens (colors, spacing, typography)
 │   │   └── types/               # Shared UI domain types
 │   ├── screens/                 # Route-level screens (HomeScreen for now)
@@ -197,11 +197,12 @@ the release process matures.
 
 ## Security notes
 
-- **Authentication is not fully wired up yet.** Amazon Cognito will be added in
-  a later phase. The real GraphQL client obtains its Cognito **ID token** from a
-  runtime-injected provider (`src/shared/api/authTokenProvider.ts`); until one is
-  registered, real API calls fail fast with a clear error instead of sending
-  unauthenticated requests.
+- **Authentication uses Amazon Cognito (via AWS Amplify).** On startup the app
+  configures Amplify and registers a Cognito-backed token provider behind the
+  runtime-injected seam (`src/shared/api/authTokenProvider.ts`). The GraphQL
+  client obtains its Cognito **ID token** from that provider; if the Cognito env
+  vars are missing or no user is signed in, API calls fail fast with a clear
+  error instead of sending unauthenticated requests.
 - **No AWS credentials or secrets are committed.** Backend URLs, Cognito tokens,
   API keys, and user ids are never hardcoded. The endpoint comes from
   `EXPO_PUBLIC_GRAPHQL_URL`; the ID token comes from the auth provider. The
@@ -213,10 +214,13 @@ the release process matures.
 
 ## Roadmap (future phases)
 
-- Finish the AWS AppSync GraphQL integration (client scaffolded — verify
-  operation selections against the deployed schema).
-- Add Amazon Cognito authentication (sign-in, sign-up, password reset) and wire
-  it to the `authTokenProvider`.
+- Verify the AppSync GraphQL operation selection sets against the deployed
+  `schema.graphql` and exercise them end-to-end (the client, operations,
+  mappers, and hooks are implemented but not yet run against the live backend;
+  e.g. confirm the `ProgressEvent` field names and `Assignment.active`).
+- Build the auth UI flows on top of the wired-up Cognito provider (sign-in
+  exists via `useSignIn`; still to add: sign-up, password reset, MFA challenges)
+  and add the RN native polyfills Amplify needs for live sign-in.
 - Add an offline cache + sync queue (assigned tasks and media available without internet — SRS FR-OFF-01..04).
 - Add a Task Detail screen with step-by-step execution, photo/audio/video support, and progress events.
 - Add scheduling + reminders (local notifications).

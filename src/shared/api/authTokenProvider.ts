@@ -1,23 +1,21 @@
 /**
  * Auth token abstraction for the CanPlan mobile app.
  *
- * Cognito sign-in is not wired up yet, so the GraphQL client cannot obtain an
- * ID token on its own. This module lets the app *inject* a token source at
- * runtime (e.g. from Amplify Auth or a manual dev token) without the network
- * layer depending on any specific auth implementation.
+ * The GraphQL client must not depend on *how* the app authenticates. This
+ * module is the seam: callers register a token source at runtime via
+ * `setAuthTokenProvider`, and the network layer only ever asks this module for
+ * the current Cognito ID token / user id.
  *
- * Usage once auth exists:
+ * In this app the provider is supplied by the auth feature: on startup
+ * `AppProviders` calls `registerAmplifyAuth()`, which configures AWS Amplify
+ * and registers an Amplify/Cognito-backed provider (see
+ * `src/features/auth/lib/amplifyAuthTokenProvider.ts`). The indirection keeps
+ * Amplify out of the shared layer and makes the token source easy to swap (e.g.
+ * a manual dev token in tests).
  *
- *   import { setAuthTokenProvider } from './shared/api/authTokenProvider';
- *
- *   setAuthTokenProvider({
- *     getIdToken: async () =>
- *       (await fetchAuthSession()).tokens?.idToken?.toString() ?? null,
- *     getCurrentUserId: async () => (await getCurrentUser()).userId,
- *   });
- *
- * Until a provider is registered, `getIdToken()` / `getCurrentUserId()` throw a
- * clear error explaining that authentication is not configured yet.
+ * If no provider has been registered — e.g. the Cognito env vars are missing —
+ * `getIdToken()` / `getCurrentUserId()` throw a clear "authentication is not
+ * configured" error rather than sending an unauthenticated request.
  */
 
 /**
