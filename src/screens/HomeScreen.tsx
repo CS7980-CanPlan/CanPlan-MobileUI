@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,66 +8,23 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  getMyDaySummary,
-  getMyProfile,
-  getMyTasks,
-} from '../api/fakeGraphqlClient';
-import Header from '../components/Header';
-import TaskCard from '../components/TaskCard';
-import { colors, radius, spacing, typography } from '../theme/tokens';
-import type { MyDaySummary, Task, UserProfile } from '../types';
+import { useHomeData } from '../features/home/hooks/useHomeData';
+import Header from '../shared/components/Header';
+import TaskCard from '../shared/components/TaskCard';
+import { colors, radius, spacing, typography } from '../shared/theme/tokens';
+import type { Task } from '../shared/types';
 
 /**
  * Landing screen for the primary user.
  *
- * Data is fetched through the fake GraphQL API layer on mount. The screen
- * tracks loading and error states so the same structure works once real
- * AppSync calls are swapped in.
+ * All data and request state come from the `useHomeData` hook (TanStack Query).
+ * The screen is purely presentational: it renders loading, error, empty, and
+ * success states. Business logic lives in the feature hooks/APIs/mappers.
  */
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [summary, setSummary] = useState<MyDaySummary | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadHome() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [profileData, summaryData, taskData] = await Promise.all([
-          getMyProfile(),
-          getMyDaySummary(),
-          getMyTasks(),
-        ]);
-        if (!cancelled) {
-          setProfile(profileData);
-          setSummary(summaryData);
-          setTasks(taskData);
-        }
-      } catch {
-        if (!cancelled) {
-          setError('Unable to load your tasks. Please try again.');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadHome();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { profile, tasks, summary, isLoading, isError } = useHomeData();
 
   const renderItem = ({ item }: ListRenderItemInfo<Task>) => (
     <TaskCard task={item} />
@@ -78,7 +34,11 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <Header
         title="My day"
-        subtitle={profile ? `Hi, ${profile.fullName.split(' ')[0]}` : undefined}
+        subtitle={
+          profile?.displayName
+            ? `Hi, ${profile.displayName.split(' ')[0]}`
+            : undefined
+        }
       />
 
       <FlatList
@@ -91,20 +51,17 @@ export default function HomeScreen() {
         ]}
         ListHeaderComponent={
           <View>
-            <View style={styles.demoBadgeRow}>
-              <Text style={styles.demoBadge}>Demo data</Text>
-            </View>
-
-            {error ? (
-              <Text style={styles.error}>{error}</Text>
-            ) : loading || !summary ? (
+            {isError ? (
+              <Text style={styles.error}>
+                Unable to load your tasks. Please try again.
+              </Text>
+            ) : isLoading || !summary ? (
               <View style={styles.summaryLoading}>
                 <ActivityIndicator color={colors.primary} />
               </View>
             ) : (
               <View style={styles.summaryGrid}>
                 <SummaryTile label="Tasks today" value={summary.tasksToday} accent={colors.primary} />
-                <SummaryTile label="Steps left" value={summary.stepsRemaining} accent={colors.warning} />
                 <SummaryTile label="Done" value={summary.completedToday} accent={colors.success} />
               </View>
             )}
@@ -113,7 +70,7 @@ export default function HomeScreen() {
           </View>
         }
         ListEmptyComponent={
-          loading ? null : (
+          isLoading ? null : (
             <Text style={styles.empty}>
               You have no tasks scheduled. Enjoy your day!
             </Text>
@@ -147,21 +104,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-  },
-  demoBadgeRow: {
-    flexDirection: 'row',
-    marginBottom: spacing.md,
-  },
-  demoBadge: {
-    ...typography.caption,
-    color: colors.warning,
-    backgroundColor: 'rgba(181, 104, 11, 0.12)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   summaryGrid: {
     flexDirection: 'row',
