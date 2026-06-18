@@ -1,3 +1,7 @@
+// Must be imported before any other module that may use crypto (e.g. Amplify
+// Auth / Cognito), so polyfill `crypto.getRandomValues` first.
+import 'react-native-get-random-values';
+
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
