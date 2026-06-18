@@ -84,7 +84,9 @@ export async function getMyTasks(): Promise<Task[]> {
     },
   );
 
-  const activeAssignments = assignments.filter((a) => a.active !== false);
+  const activeAssignments = assignments.filter(
+    (a) => a.active !== false && (a.status ?? '').toUpperCase() !== 'CANCELLED',
+  );
 
   const tasks = await Promise.all(
     activeAssignments.map((assignment) =>

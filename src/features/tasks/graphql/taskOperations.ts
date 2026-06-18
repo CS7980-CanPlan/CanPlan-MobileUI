@@ -46,12 +46,7 @@ export const LIST_TASK_STEPS = /* GraphQL */ `
         taskId
         order
         text
-        mediaRefs {
-          mediaId
-          type
-          url
-          s3Key
-        }
+        mediaRefs
         expectedDuration
       }
       nextToken

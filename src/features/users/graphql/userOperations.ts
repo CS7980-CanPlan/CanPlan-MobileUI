@@ -13,15 +13,8 @@ export const GET_USER_PROFILE = /* GraphQL */ `
       displayName
       email
       organizationId
-      accessibilitySettings {
-        fontScale
-        highContrast
-        reducedMotion
-        textToSpeech
-      }
-      status
+      accessibilitySettings
       createdAt
-      updatedAt
     }
   }
 `;

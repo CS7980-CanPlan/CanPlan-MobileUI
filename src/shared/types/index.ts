@@ -63,22 +63,30 @@ export interface Assignment {
   role: 'supporter' | 'admin';
 }
 
+/**
+ * Mirrors the backend `ProgressEventType` enum (lower-cased for the UI):
+ * `STARTED`, `PAUSED`, `RESUMED`, `SKIPPED`, `COMPLETED`, `SYNCED`.
+ */
 export type ProgressEventType =
-  | 'task_started'
-  | 'task_completed'
-  | 'step_completed'
-  | 'help_requested';
+  | 'started'
+  | 'paused'
+  | 'resumed'
+  | 'skipped'
+  | 'completed'
+  | 'synced';
 
-/** A timeline entry describing something a user did or needs help with. */
+/** A timeline entry describing something a user did. */
 export interface ProgressEvent {
   id: string;
   type: ProgressEventType;
   userId: string;
   /** ID of the related task, when the event is task-related. */
   taskId?: string;
-  /** Human-readable summary shown in activity feeds. */
+  /** ID of the related assignment, when present. */
+  assignmentId?: string;
+  /** Human-readable summary shown in activity feeds (derived from `type`). */
   message: string;
-  /** ISO-8601 timestamp of when the event occurred. */
+  /** ISO-8601 timestamp of when the event occurred (backend `timestamp`). */
   occurredAt: string;
 }
 

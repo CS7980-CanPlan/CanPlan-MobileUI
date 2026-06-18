@@ -23,10 +23,9 @@ export const LIST_PROGRESS_EVENTS_FOR_USER = /* GraphQL */ `
         userId
         taskId
         assignmentId
-        stepId
-        type
-        message
-        occurredAt
+        eventType
+        timestamp
+        source
       }
       nextToken
     }

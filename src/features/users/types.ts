@@ -3,24 +3,26 @@
  * `mappers/userMapper.ts` converts them into the shared `UserProfile` type.
  */
 
-/** Accessibility preferences attached to a user profile. */
-export interface BackendAccessibilitySettings {
-  fontScale?: number | null;
-  highContrast?: boolean | null;
-  reducedMotion?: boolean | null;
-  textToSpeech?: boolean | null;
-}
+/**
+ * Accessibility preferences. On the backend this is the `AWSJSON` scalar — a
+ * free-form JSON object, NOT a typed GraphQL object — so it is selected as a
+ * scalar and arrives already parsed into an object.
+ */
+export type BackendAccessibilitySettings = Record<string, unknown>;
 
-export type BackendUserRole = 'PRIMARY_USER' | 'SUPPORTER' | 'ADMIN' | string;
+/** Backend `UserRole` enum. */
+export type BackendUserRole =
+  | 'PRIMARY_USER'
+  | 'SUPPORT_PERSON'
+  | 'ORG_ADMIN'
+  | string;
 
 export interface BackendUserProfile {
   userId: string;
   role: BackendUserRole;
-  displayName: string;
-  email: string;
+  displayName?: string | null;
+  email?: string | null;
   organizationId?: string | null;
   accessibilitySettings?: BackendAccessibilitySettings | null;
-  status?: string | null;
   createdAt?: string | null;
-  updatedAt?: string | null;
 }

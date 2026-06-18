@@ -19,6 +19,7 @@ product viewed from the **supporter / admin** side.
 - **Expo SDK 51** (managed workflow — easy local development, EAS Build for releases)
 - **React Navigation** (native stack) for screen routing
 - **TanStack Query** (`@tanstack/react-query`) for caching, loading/error state, retries, and request deduplication
+- **AWS Amplify** (`aws-amplify`) for Cognito User Pool authentication
 - A **fetch-based AWS AppSync GraphQL client** (`src/shared/api/`) with a pluggable Cognito token provider
 - **StyleSheet + design tokens** (`src/shared/theme/tokens.ts`) — shared visual language with the web portal
 - Build / submit pipeline compatible with **EAS Build** (`eas.json`)
@@ -45,6 +46,7 @@ domain types).
 │   ├── app/
 │   │   └── AppProviders.tsx     # Wraps the app in the TanStack Query provider
 │   ├── features/
+│   │   ├── auth/                # config/ (Amplify), api/ (Cognito), lib/ (token provider), hooks/ (useSignIn/useSignOut/useCurrentUser)
 │   │   ├── home/                # api/ (day summary), hooks/useHomeData, types
 │   │   ├── tasks/               # api/, graphql/, hooks/ (useTasks, useTask), mappers/, types
 │   │   ├── users/               # api/, graphql/, hooks/useMyProfile, mappers/, types
@@ -134,27 +136,50 @@ Two things must be configured before requests succeed:
    EXPO_PUBLIC_GRAPHQL_URL=https://YOUR-APP-ID.appsync-api.YOUR-REGION.amazonaws.com/graphql
    ```
 
-2. **Wire up Cognito auth.** Authentication is *not* fully wired up in this app
-   yet. The GraphQL client gets its Cognito **ID token** from a pluggable
-   provider in [`src/shared/api/authTokenProvider.ts`](./src/shared/api/authTokenProvider.ts).
-   Until you register one (e.g. early in `App.tsx`), API calls throw a clear
-   "Authentication is not configured yet" error:
+2. **Set the Cognito User Pool** in `.env.local` (CloudFormation outputs):
 
-   ```ts
-   import { setAuthTokenProvider } from './src/shared/api/authTokenProvider';
-   // import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
-
-   setAuthTokenProvider({
-     getIdToken: async () =>
-       (await fetchAuthSession()).tokens?.idToken?.toString() ?? null,
-     getCurrentUserId: async () => (await getCurrentUser()).userId,
-   });
+   ```bash
+   EXPO_PUBLIC_COGNITO_USER_POOL_ID=YOUR-REGION_XXXXXXXXX
+   EXPO_PUBLIC_COGNITO_USER_POOL_CLIENT_ID=XXXXXXXXXXXXXXXXXXXXXXXXXX
    ```
 
+When these are present, [`src/app/AppProviders.tsx`](./src/app/AppProviders.tsx)
+configures **AWS Amplify** and registers a Cognito-backed auth token provider
+automatically — no manual wiring needed. The GraphQL client then reads the
+Cognito **ID token** from the shared provider
+([`src/shared/api/authTokenProvider.ts`](./src/shared/api/authTokenProvider.ts))
+and sends it as the `Authorization` header.
+
+Sign the user in to obtain that token:
+
+```tsx
+import { useSignIn, useSignOut, useCurrentUser } from './src/features/auth';
+
+const { mutate: signIn, isPending } = useSignIn();
+signIn({ username: email, password });   // Cognito SRP sign-in
+```
+
+Until a user is signed in (or if the Cognito env vars are missing), API calls
+fail fast with a clear "authentication is not configured" / "not signed in"
+error instead of sending unauthenticated requests.
+
+> **React Native native deps for Amplify v6.** Amplify Auth needs a few native
+> polyfills at runtime. Install them and rebuild the dev client before testing
+> sign-in on a device/simulator:
+>
+> ```bash
+> npx expo install @react-native-async-storage/async-storage \
+>   react-native-get-random-values
+> ```
+>
+> Import `react-native-get-random-values` at the very top of `App.tsx`. (Type
+> checking and fake/no-auth flows work without these; only live Cognito sign-in
+> requires them.)
+
 The endpoint URL and tokens are **never hardcoded** — the URL comes from
-`EXPO_PUBLIC_GRAPHQL_URL` and the token from the provider above. The AppSync API
-key is not shipped in the app (it may only be used by a dev `healthCheck`
-utility).
+`EXPO_PUBLIC_GRAPHQL_URL`, the Cognito config from `EXPO_PUBLIC_COGNITO_*`, and
+the token from Amplify at runtime. The AppSync API key is not shipped in the app
+(it may only be used by a dev `healthCheck` utility).
 
 ## Building for release with EAS
 

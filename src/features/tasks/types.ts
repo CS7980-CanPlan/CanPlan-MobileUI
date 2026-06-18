@@ -4,27 +4,27 @@
  * types.
  */
 
-/** A media asset referenced by a task step (image / audio / video). */
-export interface BackendMediaRef {
-  mediaId?: string | null;
-  /** Media kind, e.g. `IMAGE`, `AUDIO`, `VIDEO`. */
-  type?: string | null;
-  url?: string | null;
-  s3Key?: string | null;
-}
-
 export interface BackendTaskStep {
   stepId: string;
   taskId?: string | null;
   order: number;
   text: string;
-  mediaRefs?: BackendMediaRef[] | null;
+  /**
+   * Backend `mediaRefs` is `[ID!]` — a list of MediaAsset *ids*, not embedded
+   * objects. Resolving an id to a viewable URL is a separate flow
+   * (`getMediaDownloadUrl`), not handled here.
+   */
+  mediaRefs?: string[] | null;
   /** Expected duration in seconds, when provided. */
   expectedDuration?: number | null;
 }
 
-/** Raw backend task status string (e.g. `NOT_STARTED`, `IN_PROGRESS`). */
-export type BackendTaskStatus = string;
+/**
+ * Backend `TaskStatus` enum — the *template* lifecycle, not a user's execution
+ * progress. The user-facing progress comes from the assignment / progress
+ * events (see `BackendAssignmentStatus`).
+ */
+export type BackendTaskStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED' | string;
 
 export interface BackendTask {
   taskId: string;
@@ -37,12 +37,20 @@ export interface BackendTask {
   updatedAt: string;
 }
 
+/** Backend `AssignmentStatus` enum — the user's progress on an assigned task. */
+export type BackendAssignmentStatus =
+  | 'ACTIVE'
+  | 'COMPLETED'
+  | 'PAUSED'
+  | 'CANCELLED'
+  | string;
+
 export interface BackendAssignment {
   assignmentId: string;
   taskId: string;
   userId: string;
   dueDate?: string | null;
-  status?: string | null;
+  status?: BackendAssignmentStatus | null;
   /** Whether the assignment is currently active for the user. */
   active?: boolean | null;
   createdAt?: string | null;

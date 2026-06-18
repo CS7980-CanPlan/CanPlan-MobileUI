@@ -6,6 +6,9 @@
  * inferred as readonly tuples.
  */
 export const queryKeys = {
+  auth: {
+    currentUser: ['auth', 'currentUser'] as const,
+  },
   users: {
     myProfile: ['users', 'myProfile'] as const,
   },
