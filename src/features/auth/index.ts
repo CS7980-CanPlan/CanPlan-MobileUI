@@ -8,7 +8,27 @@
 
 export { registerAmplifyAuth } from './lib/amplifyAuthTokenProvider';
 export { isAmplifyConfigured } from './config/amplifyConfig';
+export { useConfirmForgotPassword } from './hooks/useConfirmForgotPassword';
+export { useConfirmSignUp } from './hooks/useConfirmSignUp';
 export { useCurrentUser } from './hooks/useCurrentUser';
+export { useForgotPassword } from './hooks/useForgotPassword';
+export { useResendSignUpCode } from './hooks/useResendSignUpCode';
 export { useSignIn } from './hooks/useSignIn';
 export { useSignOut } from './hooks/useSignOut';
-export type { AuthUser, SignInCredentials, SignInResult } from './types';
+export { useSignUp } from './hooks/useSignUp';
+export type {
+  AuthUser,
+  CodeDeliveryDetails,
+  ConfirmForgotPasswordInput,
+  ConfirmForgotPasswordResult,
+  ConfirmSignUpInput,
+  ConfirmSignUpResult,
+  ForgotPasswordInput,
+  ForgotPasswordResult,
+  ResendSignUpCodeInput,
+  ResendSignUpCodeResult,
+  SignInCredentials,
+  SignInResult,
+  SignUpCredentials,
+  SignUpResult,
+} from './types';
