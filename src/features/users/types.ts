@@ -26,3 +26,20 @@ export interface BackendUserProfile {
   accessibilitySettings?: BackendAccessibilitySettings | null;
   createdAt?: string | null;
 }
+
+/**
+ * Input for the `createUserProfile` mutation (`CreateUserProfileInput`).
+ * `userId` and `role` are required; everything else is optional. Optional
+ * fields are omitted from the request rather than sent as `null`.
+ *
+ * `accessibilitySettings` is the backend `AWSJSON` scalar — pass a plain JSON
+ * object (the client serializes the whole `variables` payload to JSON).
+ */
+export interface CreateUserProfileInput {
+  userId: string;
+  role: BackendUserRole;
+  displayName?: string;
+  email?: string;
+  organizationId?: string;
+  accessibilitySettings?: BackendAccessibilitySettings;
+}
