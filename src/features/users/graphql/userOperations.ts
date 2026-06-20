@@ -18,3 +18,17 @@ export const GET_USER_PROFILE = /* GraphQL */ `
     }
   }
 `;
+
+export const CREATE_USER_PROFILE = /* GraphQL */ `
+  mutation CreateUserProfile($input: CreateUserProfileInput!) {
+    createUserProfile(input: $input) {
+      userId
+      role
+      displayName
+      email
+      organizationId
+      accessibilitySettings
+      createdAt
+    }
+  }
+`;
