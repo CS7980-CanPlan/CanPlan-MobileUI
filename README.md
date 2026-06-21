@@ -32,9 +32,8 @@ Data flows in one direction through clearly-separated layers:
 Screen  →  Feature hook (TanStack Query)  →  Feature API facade  →  Shared GraphQL client  →  AWS AppSync
 ```
 
-The code is organized by **feature** (`users`, `tasks`, `progress`, `home`) on
-top of a **shared** layer (GraphQL client, query client, UI components, theme,
-domain types).
+The code is organized by API feature (`users`, `categories`, `tasks`,
+`assignments`, `media`, `ai`) on top of a shared typed GraphQL client.
 
 ```
 .
@@ -47,16 +46,17 @@ domain types).
 │   │   └── AppProviders.tsx     # Wraps the app in the TanStack Query provider
 │   ├── features/
 │   │   ├── auth/                # config/ (Amplify), api/ (Cognito), lib/ (token provider), hooks/ (useSignIn/useSignOut/useCurrentUser)
-│   │   ├── home/                # api/ (day summary), hooks/useHomeData, types
-│   │   ├── tasks/               # api/, graphql/, hooks/ (useTasks, useTask), mappers/, types
-│   │   ├── users/               # api/, graphql/, hooks/useMyProfile, mappers/, types
-│   │   └── progress/            # api/, graphql/, hooks/useRecentActivity, mappers/, types
+│   │   ├── users/               # profiles, support links, organization/admin listings
+│   │   ├── categories/          # category queries and creation
+│   │   ├── tasks/               # reusable task templates and template steps
+│   │   ├── assignments/         # assignments and assignment-step completion
+│   │   ├── media/               # media metadata and presigned URL operations
+│   │   └── ai/                  # source-cited task-step generation
 │   ├── shared/
-│   │   ├── api/                 # graphqlClient, authTokenProvider, pagination, errors, healthCheck
+│   │   ├── api/                 # graphqlClient, canplanApi, schema types, operation documents
 │   │   ├── query/               # queryClient (defaults) + queryKeys (cache keys)
-│   │   ├── components/          # Reusable UI (Header, TaskCard)
+│   │   ├── components/          # Reusable UI components
 │   │   ├── theme/               # Design tokens (colors, spacing, typography)
-│   │   └── types/               # Shared UI domain types
 │   ├── screens/                 # Route-level screens (HomeScreen for now)
 │   └── env.d.ts
 └── README.md
@@ -65,25 +65,30 @@ domain types).
 ### How data flows
 
 Screens **never** call the network directly. They use feature hooks, which wrap
-a feature API facade in a TanStack Query `useQuery`:
+their feature facade and the shared typed client:
 
-| Hook                       | Feature API facade        | Returns                                  |
-| -------------------------- | ------------------------- | ---------------------------------------- |
-| `useMyProfile()`           | `users/api/userApi`       | the signed-in user's profile             |
-| `useTasks()`               | `tasks/api/taskApi`       | the user's tasks, ordered by due date    |
-| `useTask(taskId)`          | `tasks/api/taskApi`       | a single task with its ordered steps     |
-| `useRecentActivity(limit)` | `progress/api/progressApi`| recent progress events                   |
-| `useHomeData()`            | combines the above        | home-screen view-model (incl. day summary) |
+| Hook | Returns |
+| --- | --- |
+| `useMyProfile()` | the signed-in user's profile |
+| `useTasksByOwner(ownerId)` / `useTask(taskId)` / `useTaskSteps(taskId)` | task templates and ordered template steps |
+| `useMyAssignments()` / `useAssignmentsForUser(userId)` / `useAssignmentSteps(userId, assignmentId)` | a user's assignments and completion snapshots |
+| `useCategoriesByOwner(ownerId)` | an owner's categories |
+| `useMediaForTask(taskId)` / `useMediaDownloadUrl(taskId, assetId)` | media metadata and a short-lived private-S3 URL |
+| `useGenerateTaskSteps()` | source-cited, AI-generated draft steps |
 
-Feature APIs call the AppSync GraphQL operations in each feature's `graphql/`
-folder via the shared client (`src/shared/api/graphqlClient.ts`) and use that
-feature's `mappers/` to convert raw backend shapes onto the shared UI domain
-types in `src/shared/types`. "My tasks", for example, lists the user's
-assignments, then fetches each referenced task and its steps.
+All query-list hooks use TanStack Query infinite queries and pass AppSync's
+opaque `nextToken` unchanged. The schema-complete
+[`canPlanApi`](./src/shared/api/canplanApi.ts) owns all GraphQL documents and
+the client contract. It also serializes `AWSJSON` input fields
+(`accessibilitySettings`, `permissions`) and parses them in responses, so UI
+code never passes an object directly to AppSync's string-based `AWSJSON`
+scalar.
 
-The day summary is **derived from the already-cached task list** inside
-`useHomeData` (via the pure `computeDaySummary`), so the home screen fetches
-tasks only once instead of fetching them again for the summary.
+Task templates and user assignments are intentionally separate. A task's
+`TaskStatus` is its template lifecycle; a user's execution state is the
+assignment's `AssignmentStatus`, and individual completion is stored on
+`AssignmentStep`. The client does not expose the removed activity-event API or
+obsolete assignment fields/statuses.
 
 ## Local setup
 
@@ -214,15 +219,13 @@ the release process matures.
 
 ## Roadmap (future phases)
 
-- Verify the AppSync GraphQL operation selection sets against the deployed
-  `schema.graphql` and exercise them end-to-end (the client, operations,
-  mappers, and hooks are implemented but not yet run against the live backend;
-  e.g. confirm the `ProgressEvent` field names and `Assignment.active`).
+- Exercise the schema-aligned GraphQL client end-to-end against the deployed
+  AppSync endpoint, including the presigned S3 upload sequence.
 - Build the auth UI flows on top of the wired-up Cognito provider (sign-in
   exists via `useSignIn`; still to add: sign-up, password reset, MFA challenges)
   and add the RN native polyfills Amplify needs for live sign-in.
 - Add an offline cache + sync queue (assigned tasks and media available without internet — SRS FR-OFF-01..04).
-- Add a Task Detail screen with step-by-step execution, photo/audio/video support, and progress events.
+- Add a Task Detail screen with step-by-step assignment execution and photo/audio/video support.
 - Add scheduling + reminders (local notifications).
 - Add real-time help requests and supporter messaging.
 - Add Bluetooth switch accessibility input and terminal-mode support.

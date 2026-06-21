@@ -1,13 +1,5 @@
 import { ReactNode, useState } from 'react';
-import {
-  NativeSyntheticEvent,
-  StyleSheet,
-  Text,
-  TextInput,
-  TextInputFocusEventData,
-  TextInputProps,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
 import { colors, radius, spacing, typography } from '../theme/tokens';
 
@@ -16,6 +8,9 @@ interface TextFieldProps extends Omit<TextInputProps, 'style'> {
   errorText?: string;
   rightSlot?: ReactNode;
 }
+
+type TextInputFocusEvent = Parameters<NonNullable<TextInputProps['onFocus']>>[0];
+type TextInputBlurEvent = Parameters<NonNullable<TextInputProps['onBlur']>>[0];
 
 export default function TextField({
   label,
@@ -27,11 +22,11 @@ export default function TextField({
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
 
-  const handleFocus = (e: NativeSyntheticEvent<TextInputFocusEventData>) => {
+  const handleFocus = (e: TextInputFocusEvent) => {
     setFocused(true);
     onFocus?.(e);
   };
-  const handleBlur = (e: NativeSyntheticEvent<TextInputFocusEventData>) => {
+  const handleBlur = (e: TextInputBlurEvent) => {
     setFocused(false);
     onBlur?.(e);
   };

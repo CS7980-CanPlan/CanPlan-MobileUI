@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { queryKeys } from '../../../shared/query/queryKeys';
-import type { UserProfile } from '../../../shared/types';
+import type { UserProfile } from '../../../shared/api/canplanTypes';
 import { createMyProfile } from '../api/userApi';
 
 /**
