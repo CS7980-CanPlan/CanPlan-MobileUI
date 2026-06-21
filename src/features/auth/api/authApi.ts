@@ -23,7 +23,7 @@ import {
   getCurrentUser,
 } from 'aws-amplify/auth';
 
-import { configureAmplify } from '../config/amplifyConfig';
+import { configureAmplify, isAmplifyConfigured } from '../config/amplifyConfig';
 import type {
   AuthUser,
   CodeDeliveryDetails,
@@ -41,19 +41,62 @@ import type {
   SignUpResult,
 } from '../types';
 
-/** Signs in with username/password and returns the resulting sign-in state. */
+/**
+ * Throws a clean error before calling Amplify when env vars are missing.
+ * Without this, Amplify itself logs a "Amplify has not been configured" warn
+ * before throwing — noisy in dev and triggers the LogBox overlay. The error
+ * we throw matches the `not configured` substring used by `errorMessages.ts`.
+ */
+function ensureConfigured(): void {
+  configureAmplify();
+  if (!isAmplifyConfigured()) {
+    const err = new Error('Authentication is not configured.');
+    err.name = 'NotConfiguredError';
+    throw err;
+  }
+}
+
+/**
+ * Trim + lowercase the email before sending to Cognito.
+ *
+ * Cognito User Pools are case-sensitive by default (per RFC 5321), but in
+ * practice every real-world email provider treats the local part as
+ * case-insensitive. Without this, `John@x.com` and `john@x.com` become two
+ * different accounts and the user can't sign in if they capitalize differently
+ * than at sign-up. Done here in the API layer (not the screens) so every flow
+ * — signIn, signUp, confirmSignUp, resend, forgot password — stays consistent.
+ */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Signs in with username/password and returns the resulting sign-in state.
+ *
+ * Uses USER_PASSWORD_AUTH (not the default USER_SRP_AUTH). SRP needs native
+ * crypto from `@aws-amplify/react-native`, which isn't linked into Expo Go's
+ * pre-built binary — so SRP throws "package not linked" at runtime there.
+ * USER_PASSWORD_AUTH is plain HTTPS POST and works in Expo Go.
+ *
+ * Requires the User Pool App Client to have `ALLOW_USER_PASSWORD_AUTH` enabled.
+ * Once we move off Expo Go (EAS Dev Build), switching back to SRP is one prop.
+ */
 export async function signIn({
   username,
   password,
 }: SignInCredentials): Promise<SignInResult> {
-  configureAmplify();
-  const { isSignedIn, nextStep } = await amplifySignIn({ username, password });
+  ensureConfigured();
+  const { isSignedIn, nextStep } = await amplifySignIn({
+    username: normalizeEmail(username),
+    password,
+    options: { authFlowType: 'USER_PASSWORD_AUTH' },
+  });
   return { isSignedIn, nextStep: nextStep.signInStep };
 }
 
 /** Signs the current user out. */
 export async function signOut(): Promise<void> {
-  configureAmplify();
+  ensureConfigured();
   await amplifySignOut();
 }
 
@@ -89,11 +132,11 @@ export async function signUp({
   password,
   email,
 }: SignUpCredentials): Promise<SignUpResult> {
-  configureAmplify();
+  ensureConfigured();
   const { isSignUpComplete, nextStep } = await amplifySignUp({
-    username,
+    username: normalizeEmail(username),
     password,
-    options: { userAttributes: { email } },
+    options: { userAttributes: { email: normalizeEmail(email) } },
   });
   return {
     isSignUpComplete,
@@ -110,9 +153,9 @@ export async function confirmSignUp({
   username,
   confirmationCode,
 }: ConfirmSignUpInput): Promise<ConfirmSignUpResult> {
-  configureAmplify();
+  ensureConfigured();
   const { isSignUpComplete, nextStep } = await amplifyConfirmSignUp({
-    username,
+    username: normalizeEmail(username),
     confirmationCode,
   });
   return { isSignUpComplete, nextStep: nextStep.signUpStep };
@@ -122,8 +165,10 @@ export async function confirmSignUp({
 export async function resendSignUpCode({
   username,
 }: ResendSignUpCodeInput): Promise<ResendSignUpCodeResult> {
-  configureAmplify();
-  const codeDeliveryDetails = await amplifyResendSignUpCode({ username });
+  ensureConfigured();
+  const codeDeliveryDetails = await amplifyResendSignUpCode({
+    username: normalizeEmail(username),
+  });
   return { codeDeliveryDetails: toCodeDeliveryDetails(codeDeliveryDetails) };
 }
 
@@ -135,9 +180,9 @@ export async function resendSignUpCode({
 export async function forgotPassword({
   username,
 }: ForgotPasswordInput): Promise<ForgotPasswordResult> {
-  configureAmplify();
+  ensureConfigured();
   const { isPasswordReset, nextStep } = await amplifyResetPassword({
-    username,
+    username: normalizeEmail(username),
   });
   return {
     isPasswordReset,
@@ -155,8 +200,12 @@ export async function confirmForgotPassword({
   confirmationCode,
   newPassword,
 }: ConfirmForgotPasswordInput): Promise<ConfirmForgotPasswordResult> {
-  configureAmplify();
-  await amplifyConfirmResetPassword({ username, confirmationCode, newPassword });
+  ensureConfigured();
+  await amplifyConfirmResetPassword({
+    username: normalizeEmail(username),
+    confirmationCode,
+    newPassword,
+  });
   return { isPasswordReset: true };
 }
 
@@ -166,6 +215,7 @@ export async function confirmForgotPassword({
  */
 export async function getIdToken(): Promise<string | null> {
   configureAmplify();
+  if (!isAmplifyConfigured()) return null;
   const session = await fetchAuthSession();
   return session.tokens?.idToken?.toString() ?? null;
 }
@@ -173,6 +223,7 @@ export async function getIdToken(): Promise<string | null> {
 /** Returns the currently signed-in user, or null if there is no session. */
 export async function getCurrentAuthUser(): Promise<AuthUser | null> {
   configureAmplify();
+  if (!isAmplifyConfigured()) return null;
   try {
     const user = await getCurrentUser();
     return { userId: user.userId, username: user.username };
