@@ -1,22 +1,24 @@
 /**
  * Design tokens for the CanPlan 2.0 Mobile UI.
  *
- * Mirrors the CSS variables defined in the Supporter Web Portal's
- * `styles/global.css` so both clients share one visual language. Components
+ * Warm orange brand palette shared across iOS, Android, and iPad. Components
  * must read from these tokens rather than hard-coding colors or spacing.
  */
 
 export const colors = {
-  bg: '#f5f7fa',
-  surface: '#ffffff',
-  border: '#d8dee9',
-  text: '#1c2433',
-  textMuted: '#5a6577',
-  primary: '#1f6feb',
-  primaryDark: '#1858c4',
-  success: '#1a7f4b',
-  warning: '#b5680b',
-  danger: '#c23030',
+  bg: '#FBF5EE',
+  surface: '#FFFFFF',
+  surfaceWarm: '#F0E7DA',
+  border: '#E5DBCB',
+  text: '#1B2230',
+  textMuted: '#6B6258',
+  primary: '#E07744',
+  primaryDark: '#C45F2E',
+  onPrimary: '#FFFFFF',
+  success: '#1A7F4B',
+  warning: '#B5680B',
+  danger: '#C23030',
+  disabled: '#B5AFA5',
 } as const;
 
 export const spacing = {
@@ -30,15 +32,19 @@ export const spacing = {
 
 export const radius = {
   sm: 6,
-  md: 10,
+  md: 12,
+  lg: 20,
   pill: 999,
 } as const;
 
 export const typography = {
-  title: { fontSize: 28, fontWeight: '700' as const, lineHeight: 34 },
+  display: { fontSize: 36, fontWeight: '800' as const, lineHeight: 42 },
+  title: { fontSize: 28, fontWeight: '800' as const, lineHeight: 34 },
   heading: { fontSize: 20, fontWeight: '700' as const, lineHeight: 26 },
   body: { fontSize: 16, fontWeight: '400' as const, lineHeight: 22 },
+  bodyStrong: { fontSize: 16, fontWeight: '700' as const, lineHeight: 22 },
   caption: { fontSize: 13, fontWeight: '400' as const, lineHeight: 18 },
+  button: { fontSize: 18, fontWeight: '700' as const, lineHeight: 22 },
   metric: { fontSize: 36, fontWeight: '700' as const, lineHeight: 40 },
 } as const;
 
@@ -49,5 +55,12 @@ export const shadow = {
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
+  },
+  cardStrong: {
+    shadowColor: '#7a3a14',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
 } as const;

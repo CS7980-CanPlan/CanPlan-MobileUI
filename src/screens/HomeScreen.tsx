@@ -1,151 +1,232 @@
-import {
-  ActivityIndicator,
-  FlatList,
-  ListRenderItemInfo,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useHomeData } from '../features/home/hooks/useHomeData';
-import Header from '../shared/components/Header';
-import TaskCard from '../shared/components/TaskCard';
-import { colors, radius, spacing, typography } from '../shared/theme/tokens';
-import type { Task } from '../shared/types';
+import { useSession } from '../app/SessionContext';
+import { useCurrentUser, useSignOut } from '../features/auth';
+import { useMyProfile } from '../features/users/hooks/useMyProfile';
+import ConfirmDialog from '../shared/components/ConfirmDialog';
+import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
 
-/**
- * Landing screen for the primary user.
- *
- * All data and request state come from the `useHomeData` hook (TanStack Query).
- * The screen is purely presentational: it renders loading, error, empty, and
- * success states. Business logic lives in the feature hooks/APIs/mappers.
- */
+interface DestinationCardProps {
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}
+
+function DestinationCard({ title, subtitle, onPress }: DestinationCardProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}
+    >
+      <View style={styles.cardTextWrap}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardSubtitle}>{subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={26} color={colors.onPrimary} />
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { isGuest, exitGuestMode } = useSession();
+  const { data: currentUser } = useCurrentUser();
+  // In guest mode there is no profile to fetch — skip the query.
+  const { data: profile } = useMyProfile({ enabled: !!currentUser && !isGuest });
+  const signOutMutation = useSignOut();
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
-  const { profile, tasks, summary, isLoading, isError } = useHomeData();
-
-  const renderItem = ({ item }: ListRenderItemInfo<Task>) => (
-    <TaskCard task={item} />
+  const dateLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      }),
+    [],
   );
 
-  return (
-    <View style={styles.screen}>
-      <Header
-        title="My day"
-        subtitle={
-          profile?.displayName
-            ? `Hi, ${profile.displayName.split(' ')[0]}`
-            : undefined
-        }
-      />
+  // Prefer the profile's displayName (real, user-provided). Fall back to
+  // a friendly placeholder when in guest mode or while the profile loads.
+  const greetingName =
+    profile?.displayName?.trim() || (isGuest ? 'there' : 'there');
 
-      <FlatList
-        data={tasks}
-        keyExtractor={(task) => task.id}
-        renderItem={renderItem}
+  const handleSignOut = () => setConfirmVisible(true);
+  const handleStaySignedIn = () => setConfirmVisible(false);
+  const handleConfirmSignOut = () => {
+    setConfirmVisible(false);
+    // Defer the auth-state change so the modal's close animation finishes
+    // before this screen unmounts. Tearing down the screen mid-animation
+    // can crash the native modal controller on iOS.
+    setTimeout(() => {
+      // Always clear BOTH bits of session state so we land on SignIn no
+      // matter how we got here. (Earlier the if/else made sign-out a no-op
+      // for one when the other was set — e.g. guest mode lingering after a
+      // real sign-in would skip the Cognito signOut call.)
+      exitGuestMode();
+      if (currentUser) {
+        signOutMutation.mutate();
+      }
+    }, 250);
+  };
+
+  return (
+    <View style={styles.root}>
+      <ScrollView
         contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: insets.bottom + spacing.xl },
+          styles.scroll,
+          { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl },
         ]}
-        ListHeaderComponent={
-          <View>
-            {isError ? (
-              <Text style={styles.error}>
-                Unable to load your tasks. Please try again.
-              </Text>
-            ) : isLoading || !summary ? (
-              <View style={styles.summaryLoading}>
-                <ActivityIndicator color={colors.primary} />
-              </View>
-            ) : (
-              <View style={styles.summaryGrid}>
-                <SummaryTile label="Tasks today" value={summary.tasksToday} accent={colors.primary} />
-                <SummaryTile label="Done" value={summary.completedToday} accent={colors.success} />
-              </View>
-            )}
+      >
+        <View style={styles.topRow}>
+          <Text style={styles.date}>{dateLabel}</Text>
 
-            <Text style={styles.sectionHeading}>Today's tasks</Text>
+          <View style={styles.topActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={() => console.log('TODO: Settings screen')}
+              style={({ pressed }) => [styles.iconBtn, pressed ? styles.chipPressed : null]}
+              hitSlop={6}
+            >
+              <Ionicons name="settings-outline" size={20} color={colors.text} />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={handleSignOut}
+              style={({ pressed }) => [styles.signOutChip, pressed ? styles.chipPressed : null]}
+              hitSlop={6}
+            >
+              <Text style={styles.signOutText}>Sign out</Text>
+            </Pressable>
           </View>
-        }
-        ListEmptyComponent={
-          isLoading ? null : (
-            <Text style={styles.empty}>
-              You have no tasks scheduled. Enjoy your day!
-            </Text>
-          )
-        }
+        </View>
+
+        <Text style={styles.greeting}>Hi {greetingName}!</Text>
+        <Text style={styles.prompt}>What would you like to do today?</Text>
+
+        <View style={styles.cardList}>
+          <DestinationCard
+            title="All Tasks"
+            subtitle="View and manage all your tasks"
+            onPress={() => console.log('TODO: All Tasks screen')}
+          />
+          <DestinationCard
+            title="Categories"
+            subtitle="Browse tasks by category"
+            onPress={() => console.log('TODO: Categories screen')}
+          />
+          <DestinationCard
+            title="Calendar"
+            subtitle="See your scheduled tasks"
+            onPress={() => console.log('TODO: Calendar screen')}
+          />
+        </View>
+      </ScrollView>
+
+      <ConfirmDialog
+        visible={confirmVisible}
+        title="Sign out?"
+        message="You will need to sign in again next time."
+        confirmLabel="Yes, sign out"
+        cancelLabel="Stay signed in"
+        destructive
+        onConfirm={handleConfirmSignOut}
+        onCancel={handleStaySignedIn}
       />
-    </View>
-  );
-}
-
-interface SummaryTileProps {
-  label: string;
-  value: number;
-  accent: string;
-}
-
-function SummaryTile({ label, value, accent }: SummaryTileProps) {
-  return (
-    <View style={[styles.tile, { borderTopColor: accent }]}>
-      <Text style={styles.tileValue}>{value}</Text>
-      <Text style={styles.tileLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
     backgroundColor: colors.bg,
   },
-  listContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+  scroll: {
+    paddingHorizontal: spacing.xl,
   },
-  summaryGrid: {
+  topRow: {
     flexDirection: 'row',
-    gap: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  date: {
+    ...typography.body,
+    color: colors.textMuted,
+  },
+  topActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signOutChip: {
+    paddingHorizontal: spacing.lg,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipPressed: {
+    backgroundColor: colors.border,
+  },
+  signOutText: {
+    ...typography.bodyStrong,
+    color: colors.text,
+  },
+  greeting: {
+    ...typography.display,
+    color: colors.text,
+  },
+  prompt: {
+    ...typography.body,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
     marginBottom: spacing.xl,
   },
-  summaryLoading: {
-    paddingVertical: spacing.xl,
+  cardList: {
+    gap: spacing.lg,
   },
-  tile: {
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+    minHeight: 110,
+    ...shadow.cardStrong,
+  },
+  cardPressed: {
+    backgroundColor: colors.primaryDark,
+  },
+  cardTextWrap: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderTopWidth: 4,
-    padding: spacing.md,
-    alignItems: 'flex-start',
+    paddingRight: spacing.md,
   },
-  tileValue: {
-    ...typography.metric,
-    color: colors.text,
+  cardTitle: {
+    ...typography.title,
+    color: colors.onPrimary,
   },
-  tileLabel: {
-    ...typography.caption,
-    color: colors.textMuted,
+  cardSubtitle: {
+    ...typography.body,
+    color: colors.onPrimary,
+    opacity: 0.92,
     marginTop: spacing.xs,
-  },
-  sectionHeading: {
-    ...typography.heading,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  error: {
-    ...typography.body,
-    color: colors.danger,
-    paddingVertical: spacing.md,
-  },
-  empty: {
-    ...typography.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: spacing.xl,
   },
 });

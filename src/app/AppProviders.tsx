@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { registerAmplifyAuth } from '../features/auth';
 import { queryClient } from '../shared/query/queryClient';
+import { SessionProvider } from './SessionContext';
 
 // Configure Amplify and register the Cognito-backed auth token provider once,
 // when this module is first loaded. No-op (with a clear later error) if the
@@ -14,11 +15,13 @@ type AppProvidersProps = {
 };
 
 /**
- * Wraps the app in cross-cutting providers. Currently the TanStack Query client;
- * future providers (theme, navigation context, etc.) compose here.
+ * Wraps the app in cross-cutting providers: TanStack Query for server state,
+ * SessionProvider for guest-mode tracking.
  */
 export function AppProviders({ children }: AppProvidersProps) {
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>{children}</SessionProvider>
+    </QueryClientProvider>
   );
 }

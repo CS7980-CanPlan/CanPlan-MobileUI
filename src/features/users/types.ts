@@ -28,18 +28,15 @@ export interface BackendUserProfile {
 }
 
 /**
- * Input for the `createUserProfile` mutation (`CreateUserProfileInput`).
- * `userId` and `role` are required; everything else is optional. Optional
- * fields are omitted from the request rather than sent as `null`.
+ * Input for the `createUserProfile` mutation — backend type
+ * `CreateMyUserProfileInput`.
  *
- * `accessibilitySettings` is the backend `AWSJSON` scalar — pass a plain JSON
- * object (the client serializes the whole `variables` payload to JSON).
+ * Per docs/API.md, this is the **self-scoped** create: the server derives
+ * `userId` (Cognito sub), `email`, and `role` from the caller's session. The
+ * client only supplies the user-editable fields.
  */
-export interface CreateUserProfileInput {
-  userId: string;
-  role: BackendUserRole;
-  displayName?: string;
-  email?: string;
+export interface CreateMyUserProfileInput {
+  displayName: string;
   organizationId?: string;
   accessibilitySettings?: BackendAccessibilitySettings;
 }
