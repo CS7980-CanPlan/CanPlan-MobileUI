@@ -48,7 +48,7 @@ function resolveEndpoint(): string {
  */
 export async function graphqlRequest<
   TData,
-  TVariables extends Record<string, unknown> | undefined = undefined,
+  TVariables extends object | undefined = undefined,
 >(query: string, variables?: TVariables): Promise<TData> {
   const url = resolveEndpoint();
 

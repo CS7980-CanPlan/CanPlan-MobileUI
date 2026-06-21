@@ -1,0 +1,431 @@
+/**
+ * Typed CanPlan API client.
+ *
+ * This is the only layer that knows GraphQL document names and AWSJSON's
+ * string-on-the-wire representation. Feature APIs and hooks consume this
+ * module's schema-shaped TypeScript contract instead.
+ */
+
+import { GraphQLRequestError } from './errors';
+import { graphqlRequest } from './graphqlClient';
+import * as operations from './canplanOperations';
+import type {
+  Assignment,
+  AssignmentStep,
+  Category,
+  Connection,
+  CreateAssignmentInput,
+  CreateCategoryInput,
+  CreateMediaAssetInput,
+  CreateMediaUploadUrlInput,
+  CreateMyUserProfileInput,
+  CreateSupportLinkInput,
+  CreateTaskCoverImageUploadUrlInput,
+  CreateTaskInput,
+  CreateTaskStepInput,
+  DeleteAssignmentInput,
+  DeleteMediaAssetInput,
+  DeleteTaskStepInput,
+  GenerateTaskStepsInput,
+  JsonValue,
+  MediaAsset,
+  MediaDownloadTarget,
+  MediaUploadTarget,
+  PageInput,
+  SetAssignmentStepCompletionInput,
+  SupportLink,
+  Task,
+  TaskStep,
+  TaskStepsResponse,
+  UpdateAssignmentStatusInput,
+  UpdateTaskInput,
+  UpdateTaskStepInput,
+  UserProfile,
+} from './canplanTypes';
+
+type RawUserProfile = Omit<UserProfile, 'accessibilitySettings'> & {
+  accessibilitySettings?: string | null;
+};
+
+type RawSupportLink = Omit<SupportLink, 'permissions'> & {
+  permissions?: string | null;
+};
+
+function parseAwsJson(
+  value: string | null | undefined,
+  fieldName: string,
+): JsonValue | null | undefined {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value) as JsonValue;
+  } catch {
+    throw new GraphQLRequestError(
+      `The API returned invalid AWSJSON for ${fieldName}.`,
+    );
+  }
+}
+
+function toAwsJson(value: JsonValue | undefined): string | undefined {
+  return value === undefined ? undefined : JSON.stringify(value);
+}
+
+function mapUserProfile(profile: RawUserProfile): UserProfile {
+  return {
+    ...profile,
+    accessibilitySettings: parseAwsJson(
+      profile.accessibilitySettings,
+      'UserProfile.accessibilitySettings',
+    ),
+  };
+}
+
+function mapSupportLink(link: RawSupportLink): SupportLink {
+  return {
+    ...link,
+    permissions: parseAwsJson(link.permissions, 'SupportLink.permissions'),
+  };
+}
+
+function mapConnection<TInput, TOutput>(
+  connection: Connection<TInput>,
+  mapItem: (item: TInput) => TOutput,
+): Connection<TOutput> {
+  return {
+    items: connection.items.map(mapItem),
+    nextToken: connection.nextToken,
+  };
+}
+
+function pageVariables(page: PageInput): PageInput {
+  return {
+    limit: page.limit,
+    nextToken: page.nextToken,
+  };
+}
+
+/** All GraphQL queries and mutations supported by the current schema. */
+export const canPlanApi = {
+  async healthCheck(): Promise<string> {
+    const data = await graphqlRequest<{ healthCheck: string }>(
+      operations.HEALTH_CHECK,
+    );
+    return data.healthCheck;
+  },
+
+  async getUserProfile(userId: string): Promise<UserProfile | null> {
+    const data = await graphqlRequest<{ getUserProfile: RawUserProfile | null }, { userId: string }>(
+      operations.GET_USER_PROFILE,
+      { userId },
+    );
+    return data.getUserProfile ? mapUserProfile(data.getUserProfile) : null;
+  },
+
+  async listUsersByOrganization(
+    organizationId: string,
+    page: PageInput = {},
+  ): Promise<Connection<UserProfile>> {
+    const data = await graphqlRequest<
+      { listUsersByOrganization: Connection<RawUserProfile> },
+      { organizationId: string } & PageInput
+    >(operations.LIST_USERS_BY_ORGANIZATION, { organizationId, ...pageVariables(page) });
+    return mapConnection(data.listUsersByOrganization, mapUserProfile);
+  },
+
+  async listPrimaryUsersBySupporter(
+    supporterId: string,
+    page: PageInput = {},
+  ): Promise<Connection<SupportLink>> {
+    const data = await graphqlRequest<
+      { listPrimaryUsersBySupporter: Connection<RawSupportLink> },
+      { supporterId: string } & PageInput
+    >(operations.LIST_PRIMARY_USERS_BY_SUPPORTER, { supporterId, ...pageVariables(page) });
+    return mapConnection(data.listPrimaryUsersBySupporter, mapSupportLink);
+  },
+
+  async listCategoriesByOwner(
+    ownerId: string,
+    page: PageInput = {},
+  ): Promise<Connection<Category>> {
+    const data = await graphqlRequest<
+      { listCategoriesByOwner: Connection<Category> },
+      { ownerId: string } & PageInput
+    >(operations.LIST_CATEGORIES_BY_OWNER, { ownerId, ...pageVariables(page) });
+    return data.listCategoriesByOwner;
+  },
+
+  async getTask(taskId: string): Promise<Task | null> {
+    const data = await graphqlRequest<{ getTask: Task | null }, { taskId: string }>(
+      operations.GET_TASK,
+      { taskId },
+    );
+    return data.getTask;
+  },
+
+  async listTaskSteps(
+    taskId: string,
+    page: PageInput = {},
+  ): Promise<Connection<TaskStep>> {
+    const data = await graphqlRequest<
+      { listTaskSteps: Connection<TaskStep> },
+      { taskId: string } & PageInput
+    >(operations.LIST_TASK_STEPS, { taskId, ...pageVariables(page) });
+    return data.listTaskSteps;
+  },
+
+  async listTasksByOwner(
+    ownerId: string,
+    page: PageInput = {},
+  ): Promise<Connection<Task>> {
+    const data = await graphqlRequest<
+      { listTasksByOwner: Connection<Task> },
+      { ownerId: string } & PageInput
+    >(operations.LIST_TASKS_BY_OWNER, { ownerId, ...pageVariables(page) });
+    return data.listTasksByOwner;
+  },
+
+  async listTasksByCategory(
+    ownerId: string,
+    categoryId: string | null | undefined,
+    page: PageInput = {},
+  ): Promise<Connection<Task>> {
+    // The API treats omitted and blank category ids as the NO_CATEGORY bucket.
+    const normalizedCategoryId = categoryId?.trim() || undefined;
+    const data = await graphqlRequest<
+      { listTasksByCategory: Connection<Task> },
+      { ownerId: string; categoryId?: string | null } & PageInput
+    >(
+      operations.LIST_TASKS_BY_CATEGORY,
+      { ownerId, categoryId: normalizedCategoryId, ...pageVariables(page) },
+    );
+    return data.listTasksByCategory;
+  },
+
+  async listAssignmentsForUser(
+    userId: string,
+    page: PageInput = {},
+  ): Promise<Connection<Assignment>> {
+    const data = await graphqlRequest<
+      { listAssignmentsForUser: Connection<Assignment> },
+      { userId: string } & PageInput
+    >(operations.LIST_ASSIGNMENTS_FOR_USER, { userId, ...pageVariables(page) });
+    return data.listAssignmentsForUser;
+  },
+
+  async listAssignmentSteps(
+    userId: string,
+    assignmentId: string,
+    page: PageInput = {},
+  ): Promise<Connection<AssignmentStep>> {
+    const data = await graphqlRequest<
+      { listAssignmentSteps: Connection<AssignmentStep> },
+      { userId: string; assignmentId: string } & PageInput
+    >(
+      operations.LIST_ASSIGNMENT_STEPS,
+      { userId, assignmentId, ...pageVariables(page) },
+    );
+    return data.listAssignmentSteps;
+  },
+
+  async getMediaDownloadUrl(
+    taskId: string,
+    assetId: string,
+  ): Promise<MediaDownloadTarget | null> {
+    const data = await graphqlRequest<
+      { getMediaDownloadUrl: MediaDownloadTarget | null },
+      { taskId: string; assetId: string }
+    >(operations.GET_MEDIA_DOWNLOAD_URL, { taskId, assetId });
+    return data.getMediaDownloadUrl;
+  },
+
+  async listMediaForTask(
+    taskId: string,
+    page: PageInput = {},
+  ): Promise<Connection<MediaAsset>> {
+    const data = await graphqlRequest<
+      { listMediaForTask: Connection<MediaAsset> },
+      { taskId: string } & PageInput
+    >(operations.LIST_MEDIA_FOR_TASK, { taskId, ...pageVariables(page) });
+    return data.listMediaForTask;
+  },
+
+  async listAllUsers(page: PageInput = {}): Promise<Connection<UserProfile>> {
+    const data = await graphqlRequest<
+      { listAllUsers: Connection<RawUserProfile> },
+      PageInput
+    >(operations.LIST_ALL_USERS, pageVariables(page));
+    return mapConnection(data.listAllUsers, mapUserProfile);
+  },
+
+  async listAllTasks(page: PageInput = {}): Promise<Connection<Task>> {
+    const data = await graphqlRequest<{ listAllTasks: Connection<Task> }, PageInput>(
+      operations.LIST_ALL_TASKS,
+      pageVariables(page),
+    );
+    return data.listAllTasks;
+  },
+
+  async createUserProfile(input: CreateMyUserProfileInput): Promise<UserProfile | null> {
+    const data = await graphqlRequest<
+      { createUserProfile: RawUserProfile | null },
+      { input: Omit<CreateMyUserProfileInput, 'accessibilitySettings'> & { accessibilitySettings?: string } }
+    >(operations.CREATE_USER_PROFILE, {
+      input: {
+        ...input,
+        accessibilitySettings: toAwsJson(input.accessibilitySettings),
+      },
+    });
+    return data.createUserProfile ? mapUserProfile(data.createUserProfile) : null;
+  },
+
+  async createSupportLink(input: CreateSupportLinkInput): Promise<SupportLink | null> {
+    const data = await graphqlRequest<
+      { createSupportLink: RawSupportLink | null },
+      { input: Omit<CreateSupportLinkInput, 'permissions'> & { permissions?: string } }
+    >(operations.CREATE_SUPPORT_LINK, {
+      input: {
+        ...input,
+        permissions: toAwsJson(input.permissions),
+      },
+    });
+    return data.createSupportLink ? mapSupportLink(data.createSupportLink) : null;
+  },
+
+  async createCategory(input: CreateCategoryInput): Promise<Category | null> {
+    const data = await graphqlRequest<{ createCategory: Category | null }, { input: CreateCategoryInput }>(
+      operations.CREATE_CATEGORY,
+      { input },
+    );
+    return data.createCategory;
+  },
+
+  async createTask(input: CreateTaskInput): Promise<Task | null> {
+    const data = await graphqlRequest<{ createTask: Task | null }, { input: CreateTaskInput }>(
+      operations.CREATE_TASK,
+      { input },
+    );
+    return data.createTask;
+  },
+
+  async updateTask(input: UpdateTaskInput): Promise<Task | null> {
+    const data = await graphqlRequest<{ updateTask: Task | null }, { input: UpdateTaskInput }>(
+      operations.UPDATE_TASK,
+      { input },
+    );
+    return data.updateTask;
+  },
+
+  async createTaskStep(input: CreateTaskStepInput): Promise<TaskStep | null> {
+    const data = await graphqlRequest<{ createTaskStep: TaskStep | null }, { input: CreateTaskStepInput }>(
+      operations.CREATE_TASK_STEP,
+      { input },
+    );
+    return data.createTaskStep;
+  },
+
+  async updateTaskStep(input: UpdateTaskStepInput): Promise<TaskStep | null> {
+    const data = await graphqlRequest<{ updateTaskStep: TaskStep | null }, { input: UpdateTaskStepInput }>(
+      operations.UPDATE_TASK_STEP,
+      { input },
+    );
+    return data.updateTaskStep;
+  },
+
+  async deleteTaskStep(input: DeleteTaskStepInput): Promise<TaskStep | null> {
+    const data = await graphqlRequest<{ deleteTaskStep: TaskStep | null }, { input: DeleteTaskStepInput }>(
+      operations.DELETE_TASK_STEP,
+      { input },
+    );
+    return data.deleteTaskStep;
+  },
+
+  async deleteTask(taskId: string): Promise<Task | null> {
+    const data = await graphqlRequest<{ deleteTask: Task | null }, { taskId: string }>(
+      operations.DELETE_TASK,
+      { taskId },
+    );
+    return data.deleteTask;
+  },
+
+  async createAssignment(input: CreateAssignmentInput): Promise<Assignment | null> {
+    const data = await graphqlRequest<{ createAssignment: Assignment | null }, { input: CreateAssignmentInput }>(
+      operations.CREATE_ASSIGNMENT,
+      { input },
+    );
+    return data.createAssignment;
+  },
+
+  async updateAssignmentStatus(
+    input: UpdateAssignmentStatusInput,
+  ): Promise<Assignment | null> {
+    const data = await graphqlRequest<
+      { updateAssignmentStatus: Assignment | null },
+      { input: UpdateAssignmentStatusInput }
+    >(operations.UPDATE_ASSIGNMENT_STATUS, { input });
+    return data.updateAssignmentStatus;
+  },
+
+  async setAssignmentStepCompletion(
+    input: SetAssignmentStepCompletionInput,
+  ): Promise<AssignmentStep | null> {
+    const data = await graphqlRequest<
+      { setAssignmentStepCompletion: AssignmentStep | null },
+      { input: SetAssignmentStepCompletionInput }
+    >(operations.SET_ASSIGNMENT_STEP_COMPLETION, { input });
+    return data.setAssignmentStepCompletion;
+  },
+
+  async deleteAssignment(input: DeleteAssignmentInput): Promise<Assignment | null> {
+    const data = await graphqlRequest<{ deleteAssignment: Assignment | null }, { input: DeleteAssignmentInput }>(
+      operations.DELETE_ASSIGNMENT,
+      { input },
+    );
+    return data.deleteAssignment;
+  },
+
+  async createMediaUploadUrl(
+    input: CreateMediaUploadUrlInput,
+  ): Promise<MediaUploadTarget | null> {
+    const data = await graphqlRequest<
+      { createMediaUploadUrl: MediaUploadTarget | null },
+      { input: CreateMediaUploadUrlInput }
+    >(operations.CREATE_MEDIA_UPLOAD_URL, { input });
+    return data.createMediaUploadUrl;
+  },
+
+  async createMediaAsset(input: CreateMediaAssetInput): Promise<MediaAsset | null> {
+    const data = await graphqlRequest<{ createMediaAsset: MediaAsset | null }, { input: CreateMediaAssetInput }>(
+      operations.CREATE_MEDIA_ASSET,
+      { input },
+    );
+    return data.createMediaAsset;
+  },
+
+  async createTaskCoverImageUploadUrl(
+    input: CreateTaskCoverImageUploadUrlInput,
+  ): Promise<MediaUploadTarget> {
+    const data = await graphqlRequest<
+      { createTaskCoverImageUploadUrl: MediaUploadTarget },
+      { input: CreateTaskCoverImageUploadUrlInput }
+    >(operations.CREATE_TASK_COVER_IMAGE_UPLOAD_URL, { input });
+    return data.createTaskCoverImageUploadUrl;
+  },
+
+  async deleteMediaAsset(input: DeleteMediaAssetInput): Promise<MediaAsset | null> {
+    const data = await graphqlRequest<{ deleteMediaAsset: MediaAsset | null }, { input: DeleteMediaAssetInput }>(
+      operations.DELETE_MEDIA_ASSET,
+      { input },
+    );
+    return data.deleteMediaAsset;
+  },
+
+  async generateTaskSteps(input: GenerateTaskStepsInput): Promise<TaskStepsResponse> {
+    const data = await graphqlRequest<
+      { generateTaskSteps: TaskStepsResponse },
+      { input: GenerateTaskStepsInput }
+    >(operations.GENERATE_TASK_STEPS, { input });
+    return data.generateTaskSteps;
+  },
+};

@@ -1,25 +1,22 @@
 /**
  * Users feature API facade.
  *
- * Calls GraphQL operations via the shared client and maps backend shapes onto
- * the shared `UserProfile` domain type. Screens consume this only through the
- * `useMyProfile` and `useCreateMyProfile` hooks.
+ * Adds user-scoped convenience functions around the schema-complete shared
+ * client. The generic client accepts explicit ids for supporter/admin flows;
+ * these helpers obtain the current Cognito `sub` for "my profile" calls.
  */
 
 import { getCurrentUserId } from '../../../shared/api/authTokenProvider';
-import { graphqlRequest } from '../../../shared/api/graphqlClient';
-import type { UserProfile } from '../../../shared/types';
-import { CREATE_USER_PROFILE, GET_USER_PROFILE } from '../graphql/userOperations';
-import { mapUserProfile } from '../mappers/userMapper';
-import type { BackendUserProfile, CreateMyUserProfileInput } from '../types';
+import { canPlanApi } from '../../../shared/api/canplanApi';
+import type {
+  CreateMyUserProfileInput,
+  CreateSupportLinkInput,
+  PageInput,
+  UserProfile,
+} from '../../../shared/api/canplanTypes';
 
-interface GetUserProfileData {
-  getUserProfile: BackendUserProfile | null;
-}
-
-interface CreateUserProfileData {
-  createUserProfile: BackendUserProfile | null;
-}
+export { canPlanApi as usersApi };
+export type { CreateMyUserProfileInput };
 
 /**
  * Returns the profile of the currently signed-in user, or `null` if no profile
@@ -28,14 +25,7 @@ interface CreateUserProfileData {
  */
 export async function getMyProfile(): Promise<UserProfile | null> {
   const userId = await getCurrentUserId();
-  const data = await graphqlRequest<GetUserProfileData, { userId: string }>(
-    GET_USER_PROFILE,
-    { userId },
-  );
-  if (!data.getUserProfile) {
-    return null;
-  }
-  return mapUserProfile(data.getUserProfile);
+  return canPlanApi.getUserProfile(userId);
 }
 
 /**
@@ -46,13 +36,29 @@ export async function getMyProfile(): Promise<UserProfile | null> {
 export async function createMyProfile(
   input: CreateMyUserProfileInput,
 ): Promise<UserProfile> {
-  const data = await graphqlRequest<
-    CreateUserProfileData,
-    { input: CreateMyUserProfileInput }
-  >(CREATE_USER_PROFILE, { input });
-
-  if (!data.createUserProfile) {
+  const profile = await canPlanApi.createUserProfile(input);
+  if (!profile) {
     throw new Error('createUserProfile returned no profile.');
   }
-  return mapUserProfile(data.createUserProfile);
+  return profile;
+}
+
+export function getUserProfile(userId: string) {
+  return canPlanApi.getUserProfile(userId);
+}
+
+export function listUsersByOrganization(organizationId: string, page?: PageInput) {
+  return canPlanApi.listUsersByOrganization(organizationId, page);
+}
+
+export function listPrimaryUsersBySupporter(supporterId: string, page?: PageInput) {
+  return canPlanApi.listPrimaryUsersBySupporter(supporterId, page);
+}
+
+export function createSupportLink(input: CreateSupportLinkInput) {
+  return canPlanApi.createSupportLink(input);
+}
+
+export function listAllUsers(page?: PageInput) {
+  return canPlanApi.listAllUsers(page);
 }

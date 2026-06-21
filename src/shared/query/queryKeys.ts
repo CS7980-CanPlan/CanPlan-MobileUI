@@ -11,17 +11,45 @@ export const queryKeys = {
   },
   users: {
     myProfile: ['users', 'myProfile'] as const,
+    profile: (userId: string) => ['users', 'profile', userId] as const,
+    organization: (organizationId: string, limit?: number) =>
+      ['users', 'organization', organizationId, limit] as const,
+    primaryBySupporter: (supporterId: string, limit?: number) =>
+      ['users', 'primaryBySupporter', supporterId, limit] as const,
+    all: (limit?: number) => ['users', 'all', limit] as const,
+  },
+  categories: {
+    all: ['categories'] as const,
+    owner: (ownerId: string, limit?: number) =>
+      ['categories', 'owner', ownerId, limit] as const,
   },
   tasks: {
     all: ['tasks'] as const,
-    mine: ['tasks', 'mine'] as const,
     detail: (taskId: string) => ['tasks', 'detail', taskId] as const,
+    steps: (taskId: string, limit?: number) =>
+      ['tasks', 'steps', taskId, limit] as const,
+    owner: (ownerId: string, limit?: number) =>
+      ['tasks', 'owner', ownerId, limit] as const,
+    category: (ownerId: string, categoryId: string | null | undefined, limit?: number) =>
+      ['tasks', 'category', ownerId, categoryId ?? 'NO_CATEGORY', limit] as const,
+    allAdmin: (limit?: number) => ['tasks', 'allAdmin', limit] as const,
   },
-  home: {
-    summary: ['home', 'summary'] as const,
+  assignments: {
+    all: ['assignments'] as const,
+    mine: (limit?: number) => ['assignments', 'mine', limit] as const,
+    user: (userId: string, limit?: number) =>
+      ['assignments', 'user', userId, limit] as const,
+    steps: (userId: string, assignmentId: string, limit?: number) =>
+      ['assignments', 'steps', userId, assignmentId, limit] as const,
   },
-  progress: {
-    recentActivity: (limit?: number) =>
-      ['progress', 'recentActivity', limit] as const,
+  media: {
+    all: ['media'] as const,
+    task: (taskId: string, limit?: number) =>
+      ['media', 'task', taskId, limit] as const,
+    download: (taskId: string, assetId: string) =>
+      ['media', 'download', taskId, assetId] as const,
+  },
+  ai: {
+    taskSteps: ['ai', 'taskSteps'] as const,
   },
 };

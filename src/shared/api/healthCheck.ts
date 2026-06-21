@@ -6,20 +6,9 @@
  * shared layer because it is cross-cutting.
  */
 
-import { graphqlRequest } from './graphqlClient';
-
-const HEALTH_CHECK = /* GraphQL */ `
-  query HealthCheck {
-    healthCheck
-  }
-`;
-
-interface HealthCheckData {
-  healthCheck: unknown;
-}
+import { canPlanApi } from './canplanApi';
 
 /** Pings the API's `healthCheck` query to verify connectivity and auth wiring. */
-export async function healthCheck(): Promise<unknown> {
-  const data = await graphqlRequest<HealthCheckData>(HEALTH_CHECK);
-  return data.healthCheck;
+export async function healthCheck(): Promise<string> {
+  return canPlanApi.healthCheck();
 }
