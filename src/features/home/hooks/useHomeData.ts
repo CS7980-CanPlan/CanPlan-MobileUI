@@ -25,7 +25,7 @@ export function useHomeData(): HomeData {
   );
 
   return {
-    profile: profileQuery.data,
+    profile: profileQuery.data ?? undefined,
     tasks: tasksQuery.data ?? [],
     summary,
     recentActivity: activityQuery.data ?? [],
