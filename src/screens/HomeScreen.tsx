@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSession } from '../app/SessionContext';
 import { useCurrentUser, useSignOut } from '../features/auth';
 import { useMyProfile } from '../features/users/hooks/useMyProfile';
+import type { MainStackParamList } from '../navigation/types';
 import ConfirmDialog from '../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
 
@@ -14,6 +17,8 @@ interface DestinationCardProps {
   subtitle: string;
   onPress: () => void;
 }
+
+type HomeNavigation = NativeStackNavigationProp<MainStackParamList, 'Home'>;
 
 function DestinationCard({ title, subtitle, onPress }: DestinationCardProps) {
   return (
@@ -32,6 +37,7 @@ function DestinationCard({ title, subtitle, onPress }: DestinationCardProps) {
 }
 
 export default function HomeScreen() {
+  const navigation = useNavigation<HomeNavigation>();
   const insets = useSafeAreaInsets();
   const { isGuest, exitGuestMode } = useSession();
   const { data: currentUser } = useCurrentUser();
@@ -114,7 +120,7 @@ export default function HomeScreen() {
           <DestinationCard
             title="All Tasks"
             subtitle="View and manage all your tasks"
-            onPress={() => console.log('TODO: All Tasks screen')}
+            onPress={() => navigation.navigate('AllTasks')}
           />
           <DestinationCard
             title="Categories"
