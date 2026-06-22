@@ -23,7 +23,9 @@
           "photosPermission": "Allow CanPlan to access your photos for task and step images.",
           "cameraPermission": "Allow CanPlan to use your camera for task and step images."
         }
-      ]
+      ],
+      "expo-audio",
+      "expo-video"
     ]
   }
 }

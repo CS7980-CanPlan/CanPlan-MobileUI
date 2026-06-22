@@ -32,5 +32,7 @@ export type OnboardingStackParamList = {
 export type MainStackParamList = {
   Home: undefined;
   AllTasks: undefined;
+  TaskView: { taskId: string };
   CreateTask: { taskId?: string } | undefined;
+  CreateTaskStep: { taskId: string; stepId?: string };
 };

@@ -1,8 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import {
+  UNSTABLE_usePreventRemove,
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,23 +27,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   useCreateTask,
-  useCreateTaskStep,
+  useDeleteTask,
+  useDeleteTaskStep,
   useTaskSteps,
   useUpdateTask,
-  useUpdateTaskStep,
 } from '../features/tasks/hooks/useTaskApi';
 import {
-  useCreateMediaAsset,
-  useCreateMediaUploadUrl,
   useCreateTaskCoverImageUploadUrl,
+  useDeleteMediaAsset,
   useMediaDownloadUrl,
+  useMediaForTask,
 } from '../features/media/hooks/useMedia';
 import { useTask } from '../features/tasks/hooks/useTask';
 import { useCategoriesByOwner } from '../features/categories/hooks/useCategories';
 import type { MainStackParamList } from '../navigation/types';
 import { getCurrentUserId } from '../shared/api/authTokenProvider';
-import type { Category, RepeatUnit, TaskScheduleInput } from '../shared/api/canplanTypes';
+import type { Category, MediaType, RepeatUnit, TaskScheduleInput } from '../shared/api/canplanTypes';
 import BackButton from '../shared/components/BackButton';
+import ConfirmDialog from '../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
 
 type CreateTaskNavigation = NativeStackNavigationProp<MainStackParamList, 'CreateTask'>;
@@ -49,22 +56,6 @@ interface DraftStep {
   order: number;
   text: string;
   mediaAssetId?: string | null;
-  /** Retained locally after a failed upload so the user can retry from Edit. */
-  pendingPhoto?: SelectedImage;
-}
-
-interface StepEditorDraft {
-  text: string;
-  photo?: SelectedImage;
-}
-
-interface StepEditorProps {
-  visible: boolean;
-  step?: DraftStep;
-  busy: boolean;
-  onCancel: () => void;
-  onSave: (draft: StepEditorDraft) => void;
-  onChoosePhoto: (onSelected: (image: SelectedImage) => void) => void;
 }
 
 interface ScheduleSheetProps {
@@ -107,6 +98,19 @@ function scheduleLabel(schedule?: TaskScheduleInput): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+}
+
+type MediaDisplay = { icon: keyof typeof Ionicons.glyphMap; label: string };
+
+function mediaDisplay(type?: MediaType): MediaDisplay {
+  switch (type) {
+    case 'VIDEO':
+      return { icon: 'videocam-outline', label: 'Video' };
+    case 'AUDIO':
+      return { icon: 'mic-outline', label: 'Audio' };
+    default:
+      return { icon: 'image-outline', label: 'Photo' };
+  }
 }
 
 function contentTypeForImage(image: SelectedImage): string {
@@ -346,198 +350,32 @@ function CategorySheet({
   );
 }
 
-function StepEditor({
-  visible,
-  step,
-  busy,
-  onCancel,
-  onSave,
-  onChoosePhoto,
-}: StepEditorProps) {
-  const insets = useSafeAreaInsets();
-  const [text, setText] = useState('');
-  const [selectedPhoto, setSelectedPhoto] = useState<SelectedImage | undefined>();
-  const isEditing = Boolean(step);
-
-  // The state needs to be refreshed for each opening because this modal stays mounted.
-  const handleShown = () => {
-    setText(step?.text ?? '');
-    setSelectedPhoto(step?.pendingPhoto);
-  };
-
-  const canSave = Boolean(text.trim()) && !busy;
-  const hasAttachedPhoto = Boolean(selectedPhoto || step?.mediaAssetId);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      statusBarTranslucent
-      onShow={handleShown}
-      onRequestClose={busy ? undefined : onCancel}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.sheetKeyboardAvoider}
-      >
-        <View style={styles.sheetBackdrop}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close step editor"
-            disabled={busy}
-            onPress={onCancel}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.xl) }]}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.sheetHeader}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Cancel step editing"
-                disabled={busy}
-                onPress={onCancel}
-                style={({ pressed }) => [styles.sheetTextButton, pressed && !busy ? styles.pressed : null]}
-              >
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Text style={styles.sheetTitle}>{isEditing ? 'Edit Step' : 'Add Step'}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={isEditing ? 'Update step' : 'Add step'}
-                accessibilityState={{ disabled: !canSave, busy }}
-                disabled={!canSave}
-                onPress={() => onSave({ text: text.trim(), photo: selectedPhoto })}
-                style={({ pressed }) => [styles.sheetTextButton, pressed && canSave ? styles.pressed : null]}
-              >
-                {busy ? (
-                  <ActivityIndicator color={colors.primary} size="small" />
-                ) : (
-                  <Text style={[styles.addText, !canSave ? styles.disabledText : null]}>
-                    {isEditing ? 'Update' : 'Add'}
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={styles.sheetContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.editorCard}>
-                <Text style={styles.sectionLabel}>Step text</Text>
-                <TextInput
-                  accessibilityLabel="Step text"
-                  autoFocus
-                  editable={!busy}
-                  value={text}
-                  onChangeText={setText}
-                  placeholder="e.g. Get eggs from fridge"
-                  placeholderTextColor={colors.disabled}
-                  style={styles.stepTextInput}
-                  returnKeyType="done"
-                  onSubmitEditing={() => {
-                    if (canSave) {
-                      onSave({ text: text.trim(), photo: selectedPhoto });
-                    }
-                  }}
-                />
-              </View>
-
-              {selectedPhoto ? (
-                <View style={styles.editorPhotoPreview}>
-                  <Image
-                    accessibilityLabel="Selected step photo"
-                    source={{ uri: selectedPhoto.uri }}
-                    style={styles.editorPhotoImage}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Change step photo"
-                    disabled={busy}
-                    onPress={() => onChoosePhoto(setSelectedPhoto)}
-                    style={({ pressed }) => [styles.changePhotoButton, pressed && !busy ? styles.pressed : null]}
-                  >
-                    <Ionicons name="camera-outline" size={16} color={colors.onPrimary} />
-                    <Text style={styles.changePhotoText}>Change</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={hasAttachedPhoto ? 'Replace step photo' : 'Add a step photo'}
-                  disabled={busy}
-                  onPress={() => onChoosePhoto(setSelectedPhoto)}
-                  style={({ pressed }) => [
-                    styles.addPhotoAction,
-                    pressed && !busy ? styles.addPhotoActionPressed : null,
-                    busy ? styles.controlDisabled : null,
-                  ]}
-                >
-                  <Ionicons name="camera-outline" size={28} color={colors.primary} />
-                  <View style={styles.addPhotoCopy}>
-                    <Text style={styles.addPhotoTitle}>
-                      {hasAttachedPhoto ? 'Replace photo' : 'Add a photo'}
-                    </Text>
-                    <Text style={styles.addPhotoDescription}>
-                      {hasAttachedPhoto ? 'A photo is already attached to this step.' : 'Optional image guidance for this step.'}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.primary} />
-                </Pressable>
-              )}
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={isEditing ? 'Update step' : 'Add step'}
-                accessibilityState={{ disabled: !canSave, busy }}
-                disabled={!canSave}
-                onPress={() => onSave({ text: text.trim(), photo: selectedPhoto })}
-                style={({ pressed }) => [
-                  styles.sheetPrimaryButton,
-                  !canSave ? styles.sheetPrimaryButtonDisabled : null,
-                  pressed && canSave ? styles.primaryPressed : null,
-                ]}
-              >
-                {busy ? (
-                  <ActivityIndicator color={colors.onPrimary} />
-                ) : (
-                  <Text style={styles.sheetPrimaryButtonText}>
-                    {isEditing ? 'Update Step' : 'Add Step'}
-                  </Text>
-                )}
-              </Pressable>
-            </ScrollView>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
 export default function CreateTaskScreen() {
   const navigation = useNavigation<CreateTaskNavigation>();
   const route = useRoute<CreateTaskRoute>();
   const insets = useSafeAreaInsets();
   const existingTaskId = route.params?.taskId;
   const createTaskMutation = useCreateTask();
+  const deleteTaskMutation = useDeleteTask();
   const updateTaskMutation = useUpdateTask();
-  const createTaskStepMutation = useCreateTaskStep();
-  const updateTaskStepMutation = useUpdateTaskStep();
+  const deleteTaskStepMutation = useDeleteTaskStep();
   const createCoverUploadUrlMutation = useCreateTaskCoverImageUploadUrl();
-  const createMediaUploadUrlMutation = useCreateMediaUploadUrl();
-  const createMediaAssetMutation = useCreateMediaAsset();
+  const deleteMediaAssetMutation = useDeleteMediaAsset();
   const existingTaskQuery = useTask(existingTaskId ?? '');
-  const existingStepsQuery = useTaskSteps(existingTaskId ?? '');
+  const [taskId, setTaskId] = useState<string>();
+  const activeTaskId = existingTaskId ?? taskId ?? '';
+  const existingStepsQuery = useTaskSteps(activeTaskId);
+  const existingMediaQuery = useMediaForTask(activeTaskId);
   const existingCoverQuery = useMediaDownloadUrl(
-    existingTaskId ?? '',
+    activeTaskId,
     existingTaskQuery.data?.coverImageAssetId ?? '',
   );
 
   const [title, setTitle] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
-  const [taskId, setTaskId] = useState<string>();
+  const [description, setDescription] = useState('');
+  const [savedDescription, setSavedDescription] = useState('');
+  const [descEditorVisible, setDescEditorVisible] = useState(false);
   const [coverImage, setCoverImage] = useState<SelectedImage>();
   const [coverPreviewUri, setCoverPreviewUri] = useState<string>();
   const [coverNeedsUpload, setCoverNeedsUpload] = useState(false);
@@ -549,28 +387,30 @@ export default function CreateTaskScreen() {
   const [savedSchedule, setSavedSchedule] = useState<TaskScheduleInput>();
   const [scheduleSheetVisible, setScheduleSheetVisible] = useState(false);
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
-  const [editingStepId, setEditingStepId] = useState<string>();
-  const [stepEditorVisible, setStepEditorVisible] = useState(false);
+  const [stepToDelete, setStepToDelete] = useState<DraftStep>();
+  const [isCreatedTaskDraft, setIsCreatedTaskDraft] = useState(false);
+  const [isDraftCreationPending, setIsDraftCreationPending] = useState(false);
+  const [discardDraftVisible, setDiscardDraftVisible] = useState(false);
+  const [deleteCoverVisible, setDeleteCoverVisible] = useState(false);
+  const [exitDestination, setExitDestination] = useState<'all-tasks' | 'back'>();
   const [busyAction, setBusyAction] = useState<string>();
   const [inlineError, setInlineError] = useState<string>();
   const [hydratedTaskId, setHydratedTaskId] = useState<string>();
-  const [hydratedStepsTaskId, setHydratedStepsTaskId] = useState<string>();
   const categoriesQuery = useCategoriesByOwner(categoryOwnerId);
+  const taskOperationRef = useRef<string | undefined>(undefined);
+  const draftCreationPromiseRef = useRef<Promise<string> | undefined>(undefined);
 
   const isBusy =
     Boolean(busyAction) ||
     createTaskMutation.isPending ||
+    deleteTaskMutation.isPending ||
     updateTaskMutation.isPending ||
-    createTaskStepMutation.isPending ||
-    updateTaskStepMutation.isPending ||
+    deleteTaskStepMutation.isPending ||
     createCoverUploadUrlMutation.isPending ||
-    createMediaUploadUrlMutation.isPending ||
-    createMediaAssetMutation.isPending;
+    deleteMediaAssetMutation.isPending;
   const trimmedTitle = title.trim();
-  const editingStep = useMemo(
-    () => steps.find((step) => step.stepId === editingStepId),
-    [editingStepId, steps],
-  );
+  const shouldConfirmDraftDiscard =
+    !existingTaskId && (isCreatedTaskDraft || isDraftCreationPending);
   const categories = useMemo(
     () => categoriesQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [categoriesQuery.data],
@@ -583,6 +423,13 @@ export default function CreateTaskScreen() {
     () => existingStepsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [existingStepsQuery.data],
   );
+  const mediaTypeByAssetId = useMemo(() => {
+    const map = new Map<string, MediaType>();
+    existingMediaQuery.data?.pages
+      .flatMap((page) => page.items)
+      .forEach((asset) => map.set(asset.assetId, asset.type));
+    return map;
+  }, [existingMediaQuery.data]);
   const isLoadingExistingTask = Boolean(existingTaskId) && (
     existingTaskQuery.isLoading || existingStepsQuery.isLoading
   );
@@ -597,6 +444,8 @@ export default function CreateTaskScreen() {
     setTaskId(task.taskId);
     setTitle(task.title);
     setSavedTitle(task.title);
+    setDescription(task.description ?? '');
+    setSavedDescription(task.description ?? '');
     setCategoryId(task.categoryId ?? undefined);
     setSavedCategoryId(task.categoryId ?? undefined);
     setSchedule(task.schedule ?? undefined);
@@ -605,7 +454,7 @@ export default function CreateTaskScreen() {
   }, [existingTaskQuery.data, hydratedTaskId]);
 
   useEffect(() => {
-    if (!existingTaskId || existingStepsQuery.isLoading || hydratedStepsTaskId === existingTaskId) {
+    if (!activeTaskId || existingStepsQuery.isLoading) {
       return;
     }
 
@@ -619,8 +468,16 @@ export default function CreateTaskScreen() {
           mediaAssetId: step.mediaAssetId,
         })),
     );
-    setHydratedStepsTaskId(existingTaskId);
-  }, [existingSteps, existingStepsQuery.isLoading, existingTaskId, hydratedStepsTaskId]);
+  }, [activeTaskId, existingSteps, existingStepsQuery.isLoading]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTaskId) {
+        void existingStepsQuery.refetch();
+        void existingMediaQuery.refetch();
+      }
+    }, [activeTaskId, existingStepsQuery.refetch, existingMediaQuery.refetch]),
+  );
 
   useEffect(() => {
     if (existingCoverQuery.data?.downloadUrl && !coverImage) {
@@ -646,13 +503,103 @@ export default function CreateTaskScreen() {
     };
   }, []);
 
-  const closeStepEditor = () => {
-    if (isBusy) {
+  const beginTaskOperation = (action: string) => {
+    taskOperationRef.current = action;
+    setBusyAction(action);
+  };
+
+  const endTaskOperation = (action: string) => {
+    if (taskOperationRef.current === action) {
+      taskOperationRef.current = undefined;
+      setBusyAction(undefined);
+    }
+  };
+
+  const createDraftTask = async (taskTitle: string): Promise<string> => {
+    if (taskId) {
+      return taskId;
+    }
+    if (draftCreationPromiseRef.current) {
+      return draftCreationPromiseRef.current;
+    }
+
+    setIsDraftCreationPending(true);
+    const creation = (async () => {
+      const ownerId = await getCurrentUserId();
+      const createdTask = await createTaskMutation.mutateAsync({
+        ownerId,
+        title: taskTitle,
+        status: 'DRAFT',
+      });
+      if (!createdTask) {
+        throw new Error('Task creation returned no task. Please try again.');
+      }
+
+      setTaskId(createdTask.taskId);
+      setSavedTitle(taskTitle);
+      setIsCreatedTaskDraft(true);
+      return createdTask.taskId;
+    })();
+    draftCreationPromiseRef.current = creation;
+
+    try {
+      return await creation;
+    } finally {
+      if (draftCreationPromiseRef.current === creation) {
+        draftCreationPromiseRef.current = undefined;
+        setIsDraftCreationPending(false);
+      }
+    }
+  };
+
+  const handleTaskNameBlur = () => {
+    if (taskId || !trimmedTitle || isBusy || taskOperationRef.current) {
       return;
     }
-    setStepEditorVisible(false);
-    setEditingStepId(undefined);
+
+    const action = 'create-draft';
+    beginTaskOperation(action);
+    setInlineError(undefined);
+    void (async () => {
+      try {
+        await createDraftTask(trimmedTitle);
+      } catch (error) {
+        setInlineError(errorMessage(error));
+      } finally {
+        endTaskOperation(action);
+      }
+    })();
   };
+
+  UNSTABLE_usePreventRemove(
+    shouldConfirmDraftDiscard && !exitDestination,
+    () => {
+      if (!isBusy && !taskOperationRef.current) {
+        setDiscardDraftVisible(true);
+      }
+    },
+  );
+
+  useEffect(() => {
+    if (!exitDestination || isBusy || shouldConfirmDraftDiscard) {
+      return;
+    }
+
+    setExitDestination(undefined);
+    if (exitDestination === 'all-tasks') {
+      navigation.reset({
+        index: 1,
+        routes: [{ name: 'Home' }, { name: 'AllTasks' }],
+      });
+      return;
+    }
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Home');
+    }
+  }, [exitDestination, isBusy, navigation, shouldConfirmDraftDiscard]);
 
   const uploadCoverImage = async (id: string, image: SelectedImage) => {
     const contentType = contentTypeForImage(image);
@@ -672,34 +619,6 @@ export default function CreateTaskScreen() {
     if (!updatedTask) {
       throw new Error('Could not attach the task photo. Please try again.');
     }
-  };
-
-  const uploadStepPhoto = async (id: string, image: SelectedImage) => {
-    const contentType = contentTypeForImage(image);
-    const target = await createMediaUploadUrlMutation.mutateAsync({
-      taskId: id,
-      contentType,
-      fileName: fileNameForImage(image, contentType),
-    });
-    if (!target) {
-      throw new Error('Could not prepare the step photo upload. Please try again.');
-    }
-
-    const size = await uploadImageToPresignedUrl(image, target.uploadUrl, contentType);
-    const ownerId = await getCurrentUserId();
-    const mediaAsset = await createMediaAssetMutation.mutateAsync({
-      taskId: id,
-      s3Key: target.s3Key,
-      type: 'IMAGE',
-      mimeType: contentType,
-      ownerId,
-      size,
-    });
-    if (!mediaAsset) {
-      throw new Error('Could not save the step photo. Please try again.');
-    }
-
-    return mediaAsset.assetId;
   };
 
   const selectImage = async (source: 'camera' | 'library', onSelected: (image: SelectedImage) => Promise<void> | void) => {
@@ -779,12 +698,17 @@ export default function CreateTaskScreen() {
       setCoverImage(undefined);
       setCoverPreviewUri(undefined);
       setCoverNeedsUpload(false);
+      setDeleteCoverVisible(false);
       return;
     }
 
     setBusyAction('cover');
     setInlineError(undefined);
     try {
+      const coverAssetId = existingTaskQuery.data?.coverImageAssetId;
+      if (coverAssetId) {
+        await deleteMediaAssetMutation.mutateAsync({ taskId, assetId: coverAssetId });
+      }
       const updatedTask = await updateTaskMutation.mutateAsync({ taskId, coverImageS3Key: null });
       if (!updatedTask) {
         throw new Error('Could not remove the task photo. Please try again.');
@@ -792,63 +716,41 @@ export default function CreateTaskScreen() {
       setCoverImage(undefined);
       setCoverPreviewUri(undefined);
       setCoverNeedsUpload(false);
+      setDeleteCoverVisible(false);
     } catch (error) {
       setInlineError(errorMessage(error));
+      setDeleteCoverVisible(false);
     } finally {
       setBusyAction(undefined);
     }
   };
 
   const handleSaveTask = async () => {
-    if (!trimmedTitle || isBusy) {
+    if (
+      !trimmedTitle ||
+      taskOperationRef.current === 'save-task' ||
+      (isBusy && !draftCreationPromiseRef.current)
+    ) {
       return;
     }
 
-    let shouldRedirectToAllTasks = false;
-    setBusyAction('task');
+    const action = 'save-task';
+    beginTaskOperation(action);
     setInlineError(undefined);
     try {
-      if (!taskId) {
-        const ownerId = await getCurrentUserId();
-        const createdTask = await createTaskMutation.mutateAsync({
-          ownerId,
-          title: trimmedTitle,
-          status: 'DRAFT',
-        });
-        if (!createdTask) {
-          throw new Error('Task creation returned no task. Please try again.');
-        }
+      const id = taskId ?? await createDraftTask(trimmedTitle);
 
-        setTaskId(createdTask.taskId);
-        setSavedTitle(trimmedTitle);
-        if (categoryId || schedule) {
-          const configuredTask = await updateTaskMutation.mutateAsync({
-            taskId: createdTask.taskId,
-            ...(categoryId ? { categoryId } : {}),
-            ...(schedule ? { schedule } : {}),
-          });
-          if (!configuredTask) {
-            throw new Error('Could not save the task settings. Please try again.');
-          }
-        }
-        setSavedCategoryId(categoryId);
-        setSavedSchedule(schedule);
-        if (coverImage) {
-          await uploadCoverImage(createdTask.taskId, coverImage);
-          setCoverNeedsUpload(false);
-        }
-        shouldRedirectToAllTasks = true;
-        return;
-      }
-
+      const trimmedDescription = description.trim();
       const categoryChanged = categoryId !== savedCategoryId;
       const scheduleChanged = scheduleSignature(schedule) !== scheduleSignature(savedSchedule);
-      if (trimmedTitle !== savedTitle || categoryChanged || scheduleChanged) {
+      const descriptionChanged = trimmedDescription !== savedDescription.trim();
+      if (trimmedTitle !== savedTitle || categoryChanged || scheduleChanged || descriptionChanged) {
         const updatedTask = await updateTaskMutation.mutateAsync({
-          taskId,
+          taskId: id,
           ...(trimmedTitle !== savedTitle ? { title: trimmedTitle } : {}),
           ...(categoryChanged ? { categoryId: categoryId ?? null } : {}),
           ...(scheduleChanged ? { schedule: schedule ?? null } : {}),
+          ...(descriptionChanged ? { description: trimmedDescription || null } : {}),
         });
         if (!updatedTask) {
           throw new Error('Could not save the task changes. Please try again.');
@@ -856,110 +758,76 @@ export default function CreateTaskScreen() {
         setSavedTitle(trimmedTitle);
         setSavedCategoryId(categoryId);
         setSavedSchedule(schedule);
+        setSavedDescription(trimmedDescription);
       }
 
       if (coverImage && coverNeedsUpload) {
-        await uploadCoverImage(taskId, coverImage);
+        await uploadCoverImage(id, coverImage);
         setCoverNeedsUpload(false);
       }
-      shouldRedirectToAllTasks = true;
+      setIsCreatedTaskDraft(false);
+      setExitDestination('all-tasks');
     } catch (error) {
       setInlineError(errorMessage(error));
     } finally {
-      setBusyAction(undefined);
-      if (shouldRedirectToAllTasks) {
-        navigation.navigate('AllTasks');
-      }
+      endTaskOperation(action);
     }
   };
 
-  const updateLocalStep = (stepId: string, patch: Partial<DraftStep>) => {
-    setSteps((currentSteps) =>
-      currentSteps.map((currentStep) =>
-        currentStep.stepId === stepId ? { ...currentStep, ...patch } : currentStep,
-      ),
-    );
-  };
-
-  const attachPhotoToStep = async (
-    id: string,
-    step: DraftStep,
-    photo: SelectedImage,
-    changedText?: string,
-  ) => {
-    const mediaAssetId = await uploadStepPhoto(id, photo);
-    const updatedStep = await updateTaskStepMutation.mutateAsync({
-      taskId: id,
-      stepId: step.stepId,
-      ...(changedText ? { text: changedText } : {}),
-      mediaAssetId,
-    });
-    if (!updatedStep) {
-      throw new Error('Could not attach the step photo. Please try again.');
-    }
-    updateLocalStep(step.stepId, { text: changedText ?? step.text, mediaAssetId, pendingPhoto: undefined });
-  };
-
-  const handleSaveStep = async ({ text, photo }: StepEditorDraft) => {
-    if (!taskId || !text || isBusy) {
+  const handleDeleteStep = async () => {
+    if (!taskId || !stepToDelete || isBusy) {
       return;
     }
 
-    setBusyAction('step');
+    setBusyAction('delete-step');
     setInlineError(undefined);
     try {
-      if (!editingStep) {
-        const order = steps.length + 1;
-        const createdStep = await createTaskStepMutation.mutateAsync({ taskId, order, text });
-        if (!createdStep) {
-          throw new Error('Step creation returned no step. Please try again.');
-        }
-
-        const localStep: DraftStep = {
-          stepId: createdStep.stepId,
-          order: createdStep.order,
-          text: createdStep.text,
-          mediaAssetId: createdStep.mediaAssetId,
-          pendingPhoto: photo,
-        };
-        setSteps((currentSteps) => [...currentSteps, localStep]);
-        setStepEditorVisible(false);
-        setEditingStepId(undefined);
-
-        if (photo) {
-          await attachPhotoToStep(taskId, localStep, photo);
-        }
-        return;
+      const deletedStep = await deleteTaskStepMutation.mutateAsync({
+        taskId,
+        stepId: stepToDelete.stepId,
+      });
+      if (!deletedStep) {
+        throw new Error('Step deletion returned no step. Please try again.');
       }
+      setSteps((currentSteps) => currentSteps.filter((step) => step.stepId !== stepToDelete.stepId));
+      setStepToDelete(undefined);
+    } catch (error) {
+      setInlineError(errorMessage(error));
+      setStepToDelete(undefined);
+    } finally {
+      setBusyAction(undefined);
+    }
+  };
 
-      const textChanged = editingStep.text !== text;
-      const photoToUpload = photo;
-      if (photoToUpload) {
-        await attachPhotoToStep(taskId, editingStep, photoToUpload, textChanged ? text : undefined);
-      } else if (textChanged) {
-        const updatedStep = await updateTaskStepMutation.mutateAsync({
-          taskId,
-          stepId: editingStep.stepId,
-          text,
-        });
-        if (!updatedStep) {
-          throw new Error('Could not update the step. Please try again.');
-        }
-        updateLocalStep(editingStep.stepId, { text });
+  const handleDiscardDraft = async () => {
+    if (!taskId || isBusy) {
+      return;
+    }
+
+    const action = 'discard-draft';
+    beginTaskOperation(action);
+    setInlineError(undefined);
+    try {
+      const deletedTask = await deleteTaskMutation.mutateAsync(taskId);
+      if (!deletedTask) {
+        throw new Error('Could not discard this task. Please try again.');
       }
-
-      // An existing step with no changed text or newly selected photo makes no API update.
-      setStepEditorVisible(false);
-      setEditingStepId(undefined);
+      setDiscardDraftVisible(false);
+      setIsCreatedTaskDraft(false);
+      setExitDestination('back');
     } catch (error) {
       setInlineError(errorMessage(error));
     } finally {
-      setBusyAction(undefined);
+      endTaskOperation(action);
     }
   };
 
   const handleBack = () => {
-    if (isBusy) {
+    if (isBusy || taskOperationRef.current) {
+      return;
+    }
+    if (shouldConfirmDraftDiscard) {
+      setDiscardDraftVisible(true);
       return;
     }
     if (navigation.canGoBack()) {
@@ -967,6 +835,27 @@ export default function CreateTaskScreen() {
     } else {
       navigation.navigate('Home');
     }
+  };
+
+  const openStepEditor = (stepId?: string) => {
+    if (isBusy) {
+      return;
+    }
+    if (!taskId) {
+      if (trimmedTitle) {
+        Alert.alert(
+          'Creating your task',
+          'Your task name is being saved. You can add steps as soon as it is ready.',
+        );
+        return;
+      }
+      Alert.alert(
+        'Add a task name first',
+        'Enter a task name and tap outside the field to create the task before adding or editing steps.',
+      );
+      return;
+    }
+    navigation.navigate('CreateTaskStep', { taskId, ...(stepId ? { stepId } : {}) });
   };
 
   if (isLoadingExistingTask) {
@@ -1043,11 +932,26 @@ export default function CreateTaskScreen() {
             placeholderTextColor={colors.disabled}
             style={styles.taskTitleInput}
             returnKeyType="done"
-            onSubmitEditing={() => {
-              void handleSaveTask();
-            }}
+            onBlur={handleTaskNameBlur}
           />
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit task description"
+          disabled={isBusy}
+          onPress={() => setDescEditorVisible(true)}
+          style={({ pressed }) => [
+            styles.card,
+            styles.descriptionCard,
+            pressed && !isBusy ? styles.pressed : null,
+          ]}
+        >
+          <Text style={styles.sectionLabel}>Description (Optional)</Text>
+          <Text style={[styles.descriptionPreview, description.trim() ? null : styles.descriptionPlaceholder]}>
+            {description.trim() ? description : 'Add more details about this task...'}
+          </Text>
+        </Pressable>
 
         <View style={[styles.card, styles.photoCard]}>
           <Text style={styles.sectionLabel}>Task photo</Text>
@@ -1058,9 +962,7 @@ export default function CreateTaskScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Remove task photo"
                 disabled={isBusy}
-                onPress={() => {
-                  void handleRemoveCover();
-                }}
+                onPress={() => setDeleteCoverVisible(true)}
                 style={({ pressed }) => [styles.removePhotoButton, pressed && !isBusy ? styles.pressed : null]}
               >
                 <Ionicons name="close" size={18} color={colors.onPrimary} />
@@ -1097,9 +999,9 @@ export default function CreateTaskScreen() {
         <View style={styles.card}>
           <View style={styles.stepsHeading}>
             <Text style={styles.sectionLabel}>Steps</Text>
-            {taskId ? <Text style={styles.stepsStatus}>Saved task</Text> : null}
+            {steps.length > 1 ? <Text style={styles.reorderChip}>Reorder</Text> : null}
           </View>
-          {!taskId ? <Text style={styles.stepHint}>Save the task before adding steps.</Text> : null}
+          {!taskId ? <Text style={styles.stepHint}>Add a task name to unlock steps.</Text> : null}
 
           <View style={styles.stepList}>
             {steps.map((step, index) => (
@@ -1109,21 +1011,21 @@ export default function CreateTaskScreen() {
                 </View>
                 <View style={styles.stepCopy}>
                   <Text style={styles.stepText}>{step.text}</Text>
-                  {step.mediaAssetId || step.pendingPhoto ? (
-                    <View style={styles.photoIndicator}>
-                      <Ionicons name="image-outline" size={13} color={colors.textMuted} />
-                      <Text style={styles.photoIndicatorText}>Photo</Text>
-                    </View>
-                  ) : null}
+                  {step.mediaAssetId ? (() => {
+                    const { icon, label } = mediaDisplay(mediaTypeByAssetId.get(step.mediaAssetId));
+                    return (
+                      <View style={styles.photoIndicator}>
+                        <Ionicons name={icon} size={13} color={colors.textMuted} />
+                        <Text style={styles.photoIndicatorText}>{label}</Text>
+                      </View>
+                    );
+                  })() : null}
                 </View>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Edit step ${index + 1}`}
                   disabled={isBusy}
-                  onPress={() => {
-                    setEditingStepId(step.stepId);
-                    setStepEditorVisible(true);
-                  }}
+                  onPress={() => openStepEditor(step.stepId)}
                   style={({ pressed }) => [
                     styles.editStepButton,
                     pressed && !isBusy ? styles.addPhotoActionPressed : null,
@@ -1132,19 +1034,30 @@ export default function CreateTaskScreen() {
                 >
                   <Text style={styles.editStepText}>Edit</Text>
                 </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete step ${index + 1}`}
+                  disabled={isBusy}
+                  onPress={() => setStepToDelete(step)}
+                  style={({ pressed }) => [
+                    styles.deleteStepButton,
+                    pressed && !isBusy ? styles.deleteStepPressed : null,
+                    isBusy ? styles.controlDisabled : null,
+                  ]}
+                >
+                  <Ionicons name="close" size={20} color={colors.danger} />
+                </Pressable>
               </View>
             ))}
           </View>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={taskId ? 'Add a step' : 'Save the task before adding a step'}
-            accessibilityState={{ disabled: !taskId || isBusy }}
-            disabled={!taskId || isBusy}
-            onPress={() => {
-              setEditingStepId(undefined);
-              setStepEditorVisible(true);
-            }}
+            accessibilityLabel={taskId ? 'Add a step' : 'Add a task name first to add steps'}
+            accessibilityHint={taskId ? undefined : 'Shows a message explaining that a task name is required first.'}
+            accessibilityState={{ disabled: isBusy }}
+            disabled={isBusy}
+            onPress={() => openStepEditor()}
             style={({ pressed }) => [
               styles.addStepButton,
               pressed && taskId && !isBusy ? styles.addPhotoActionPressed : null,
@@ -1202,15 +1115,53 @@ export default function CreateTaskScreen() {
         </View>
       </ScrollView>
 
-      <StepEditor
-        visible={stepEditorVisible}
-        step={editingStep}
-        busy={isBusy}
-        onCancel={closeStepEditor}
-        onSave={(draft) => {
-          void handleSaveStep(draft);
+      <ConfirmDialog
+        visible={discardDraftVisible}
+        title="Discard new task?"
+        message="This will permanently delete this task and any steps or photos added to it. This cannot be undone."
+        confirmLabel={deleteTaskMutation.isPending ? 'Discarding…' : 'Discard task'}
+        cancelLabel="Keep editing"
+        destructive
+        onConfirm={() => {
+          void handleDiscardDraft();
         }}
-        onChoosePhoto={(onSelected) => showImageSourceOptions(async (image) => onSelected(image))}
+        onCancel={() => {
+          if (!deleteTaskMutation.isPending) {
+            setDiscardDraftVisible(false);
+          }
+        }}
+      />
+      <ConfirmDialog
+        visible={deleteCoverVisible}
+        title="Remove task photo?"
+        message="This will permanently delete the photo from the task. This cannot be undone."
+        confirmLabel={deleteMediaAssetMutation.isPending || busyAction === 'cover' ? 'Removing…' : 'Remove photo'}
+        cancelLabel="Keep photo"
+        destructive
+        onConfirm={() => {
+          void handleRemoveCover();
+        }}
+        onCancel={() => {
+          if (!deleteMediaAssetMutation.isPending && busyAction !== 'cover') {
+            setDeleteCoverVisible(false);
+          }
+        }}
+      />
+      <ConfirmDialog
+        visible={Boolean(stepToDelete)}
+        title={`Delete “${stepToDelete?.text ?? ''}”?`}
+        message="The step and its photo will be permanently removed."
+        confirmLabel={deleteTaskStepMutation.isPending ? 'Deleting…' : 'Delete Step'}
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={() => {
+          void handleDeleteStep();
+        }}
+        onCancel={() => {
+          if (!deleteTaskStepMutation.isPending) {
+            setStepToDelete(undefined);
+          }
+        }}
       />
       <ScheduleSheet
         visible={scheduleSheetVisible}
@@ -1238,6 +1189,51 @@ export default function CreateTaskScreen() {
           setCategorySheetVisible(false);
         }}
       />
+
+      {/* ── Description editor (rises above the keyboard) ── */}
+      <Modal
+        visible={descEditorVisible}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setDescEditorVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.descEditorRoot}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close description editor"
+            onPress={() => setDescEditorVisible(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[styles.descEditorSheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <View style={styles.descEditorHeader}>
+              <Text style={styles.descEditorTitle}>Description</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Done editing description"
+                onPress={() => setDescEditorVisible(false)}
+                style={({ pressed }) => [styles.descEditorDoneBtn, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.descEditorDoneText}>Done</Text>
+              </Pressable>
+            </View>
+            <TextInput
+              accessibilityLabel="Task description"
+              autoFocus
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Add more details about this task..."
+              placeholderTextColor={colors.disabled}
+              style={styles.descEditorInput}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1318,6 +1314,58 @@ const styles = StyleSheet.create({
   photoCard: {
     gap: spacing.md,
   },
+  descriptionCard: {
+    gap: spacing.sm,
+  },
+  descriptionPreview: {
+    ...typography.body,
+    color: colors.text,
+    minHeight: 44,
+  },
+  descriptionPlaceholder: {
+    color: colors.disabled,
+  },
+  descEditorRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(20, 14, 6, 0.45)',
+  },
+  descEditorSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg + spacing.xs,
+    borderTopRightRadius: radius.lg + spacing.xs,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+  },
+  descEditorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  descEditorTitle: {
+    ...typography.heading,
+    color: colors.text,
+  },
+  descEditorDoneBtn: {
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  descEditorDoneText: {
+    ...typography.bodyStrong,
+    color: colors.onPrimary,
+  },
+  descEditorInput: {
+    ...typography.body,
+    color: colors.text,
+    minHeight: 120,
+    maxHeight: 240,
+    paddingVertical: spacing.sm,
+  },
   sectionLabel: {
     ...typography.caption,
     fontWeight: '700',
@@ -1395,6 +1443,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.success,
   },
+  reorderChip: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceWarm,
+  },
   stepHint: {
     ...typography.caption,
     color: colors.textMuted,
@@ -1454,6 +1511,17 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: '700',
     color: colors.primary,
+  },
+  deleteStepButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEE8E8',
+  },
+  deleteStepPressed: {
+    opacity: 0.72,
   },
   addStepButton: {
     minHeight: 76,
