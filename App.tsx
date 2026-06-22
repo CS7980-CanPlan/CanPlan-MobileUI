@@ -12,7 +12,9 @@ import { AppProviders } from './src/app/AppProviders';
 import { useSession } from './src/app/SessionContext';
 import { useCurrentUser } from './src/features/auth';
 import { useMyProfile } from './src/features/users/hooks/useMyProfile';
+import AllTasksScreen from './src/screens/AllTasksScreen';
 import CreateAccountScreen from './src/screens/CreateAccountScreen';
+import CreateTaskScreen from './src/screens/CreateTaskScreen';
 import ForgotPasswordResetScreen from './src/screens/ForgotPasswordResetScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import HomeScreen from './src/screens/HomeScreen';
@@ -71,7 +73,11 @@ function RootStack() {
       ) : needsOnboarding ? (
         <Stack.Screen name="Onboarding" component={OnboardingNameScreen} />
       ) : (
-        <Stack.Screen name="Home" component={HomeScreen} />
+        <>
+          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="AllTasks" component={AllTasksScreen} />
+          <Stack.Screen name="CreateTask" component={CreateTaskScreen} />
+        </>
       )}
     </Stack.Navigator>
   );

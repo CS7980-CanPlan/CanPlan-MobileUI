@@ -16,7 +16,14 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow CanPlan to access your photos for task and step images.",
+          "cameraPermission": "Allow CanPlan to use your camera for task and step images."
+        }
+      ]
     ]
   }
 }
