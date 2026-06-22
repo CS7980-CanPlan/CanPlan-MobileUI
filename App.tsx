@@ -15,11 +15,13 @@ import { useMyProfile } from './src/features/users/hooks/useMyProfile';
 import AllTasksScreen from './src/screens/AllTasksScreen';
 import CreateAccountScreen from './src/screens/CreateAccountScreen';
 import CreateTaskScreen from './src/screens/CreateTaskScreen';
+import CreateTaskStepScreen from './src/screens/CreateTaskStepScreen';
 import ForgotPasswordResetScreen from './src/screens/ForgotPasswordResetScreen';
 import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import OnboardingNameScreen from './src/screens/OnboardingNameScreen';
 import SignInScreen from './src/screens/SignInScreen';
+import TaskViewScreen from './src/screens/TaskViewScreen';
 import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
 import { colors } from './src/shared/theme/tokens';
 
@@ -76,7 +78,13 @@ function RootStack() {
         <>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="AllTasks" component={AllTasksScreen} />
-          <Stack.Screen name="CreateTask" component={CreateTaskScreen} />
+          <Stack.Screen name="TaskView" component={TaskViewScreen} />
+          <Stack.Screen
+            name="CreateTask"
+            component={CreateTaskScreen}
+            options={{ headerBackButtonMenuEnabled: false }}
+          />
+          <Stack.Screen name="CreateTaskStep" component={CreateTaskStepScreen} />
         </>
       )}
     </Stack.Navigator>

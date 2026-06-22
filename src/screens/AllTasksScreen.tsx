@@ -20,6 +20,7 @@ type AllTasksNavigation = NativeStackNavigationProp<MainStackParamList, 'AllTask
 interface TaskCardProps {
   task: Task;
   category?: Category;
+  onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
   deleteDisabled: boolean;
@@ -29,7 +30,7 @@ function pluralizeSteps(count: number): string {
   return `${count} ${count === 1 ? 'step' : 'steps'}`;
 }
 
-function TaskCard({ task, category, onEdit, onDelete, deleteDisabled }: TaskCardProps) {
+function TaskCard({ task, category, onOpen, onEdit, onDelete, deleteDisabled }: TaskCardProps) {
   const stepsQuery = useTaskSteps(task.taskId);
   const coverImageQuery = useMediaDownloadUrl(task.taskId, task.coverImageAssetId ?? '');
   const stepCount = useMemo(
@@ -66,9 +67,19 @@ function TaskCard({ task, category, onEdit, onDelete, deleteDisabled }: TaskCard
         <Text style={styles.stepSummary}>
           {stepsQuery.isLoading ? 'Loading steps…' : pluralizeSteps(stepCount)}
         </Text>
-        <View style={styles.openTaskCircle}>
+        {task.description?.trim() ? (
+          <Text numberOfLines={2} style={styles.taskDescription}>
+            {task.description.trim()}
+          </Text>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${task.title}`}
+          onPress={onOpen}
+          style={({ pressed }) => [styles.openTaskCircle, pressed ? styles.pressed : null]}
+        >
           <Ionicons name="chevron-forward" size={28} color={colors.primary} />
-        </View>
+        </Pressable>
       </View>
       <View style={styles.taskActions}>
         <Pressable
@@ -205,6 +216,7 @@ export default function AllTasksScreen() {
               key={task.taskId}
               task={task}
               category={task.categoryId ? categoryById.get(task.categoryId) : undefined}
+              onOpen={() => navigation.navigate('TaskView', { taskId: task.taskId })}
               onEdit={() => navigation.navigate('CreateTask', { taskId: task.taskId })}
               onDelete={() => setTaskToDelete(task)}
               deleteDisabled={deleteTaskMutation.isPending}
@@ -387,6 +399,11 @@ const styles = StyleSheet.create({
     ...typography.heading,
     color: colors.textMuted,
     marginTop: spacing.md,
+  },
+  taskDescription: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
   openTaskCircle: {
     position: 'absolute',
