@@ -23,6 +23,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -31,20 +32,20 @@ import {
   useDeleteTaskStep,
   useTaskSteps,
   useUpdateTask,
-} from '../features/tasks/hooks/useTaskApi';
+} from '../../features/tasks/hooks/useTaskApi';
 import {
   useCreateTaskCoverImageUploadUrl,
   useDeleteMediaAsset,
   useMediaDownloadUrl,
-} from '../features/media/hooks/useMedia';
-import { useTask } from '../features/tasks/hooks/useTask';
-import { useMyCategories } from '../features/categories/hooks/useCategories';
-import type { MainStackParamList } from '../navigation/types';
-import { getCurrentUserId } from '../shared/api/authTokenProvider';
-import type { Category, MediaAsset, MediaType, RepeatUnit, TaskScheduleInput } from '../shared/api/canplanTypes';
-import BackButton from '../shared/components/BackButton';
-import ConfirmDialog from '../shared/components/ConfirmDialog';
-import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
+} from '../../features/media/hooks/useMedia';
+import { useTask } from '../../features/tasks/hooks/useTask';
+import { useMyCategories } from '../../features/categories/hooks/useCategories';
+import type { MainStackParamList } from '../../navigation/types';
+import { getCurrentUserId } from '../../shared/api/authTokenProvider';
+import type { Category, MediaAsset, MediaType, RepeatUnit, TaskScheduleInput } from '../../shared/api/canplanTypes';
+import BackButton from '../../shared/components/BackButton';
+import ConfirmDialog from '../../shared/components/ConfirmDialog';
+import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
 type CreateTaskNavigation = NativeStackNavigationProp<MainStackParamList, 'CreateTask'>;
 type CreateTaskRoute = RouteProp<MainStackParamList, 'CreateTask'>;
@@ -374,6 +375,7 @@ export default function CreateTaskScreen() {
   const [scheduleSheetVisible, setScheduleSheetVisible] = useState(false);
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [stepToDelete, setStepToDelete] = useState<DraftStep>();
+  const stepSwipeRefs = useRef<Map<string, Swipeable | null>>(new Map());
   const [isCreatedTaskDraft, setIsCreatedTaskDraft] = useState(false);
   const [isDraftCreationPending, setIsDraftCreationPending] = useState(false);
   const [discardDraftVisible, setDiscardDraftVisible] = useState(false);
@@ -782,6 +784,9 @@ export default function CreateTaskScreen() {
       setStepToDelete(undefined);
     } catch (error) {
       setInlineError(errorMessage(error));
+      if (stepToDelete) {
+        stepSwipeRefs.current.get(stepToDelete.stepId)?.close();
+      }
       setStepToDelete(undefined);
     } finally {
       setBusyAction(undefined);
@@ -988,55 +993,69 @@ export default function CreateTaskScreen() {
         <View style={styles.card}>
           <View style={styles.stepsHeading}>
             <Text style={styles.sectionLabel}>Steps</Text>
-            {steps.length > 1 ? <Text style={styles.reorderChip}>Reorder</Text> : null}
+            {steps.length > 1 && activeTaskId ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Reorder steps"
+                onPress={() => navigation.navigate('ReorderSteps', { taskId: activeTaskId })}
+                style={({ pressed }) => [styles.reorderChip, pressed ? styles.reorderChipPressed : null]}
+              >
+                <Text style={styles.reorderChipText}>Reorder</Text>
+              </Pressable>
+            ) : null}
           </View>
           {!taskId ? <Text style={styles.stepHint}>Add a task name to unlock steps.</Text> : null}
 
           <View style={styles.stepList}>
             {steps.map((step, index) => (
-              <View key={step.stepId} style={styles.stepRow}>
-                <View style={styles.stepNumber}>
-                  <Text style={styles.stepNumberText}>{index + 1}</Text>
+              <Swipeable
+                key={step.stepId}
+                ref={(ref) => {
+                  stepSwipeRefs.current.set(step.stepId, ref);
+                }}
+                friction={2}
+                rightThreshold={48}
+                renderRightActions={() => (
+                  <View style={styles.swipeDeleteAction}>
+                    <Ionicons name="trash-outline" size={22} color={colors.onPrimary} />
+                    <Text style={styles.swipeDeleteText}>Delete</Text>
+                  </View>
+                )}
+                onSwipeableOpen={() => {
+                  if (!isBusy) setStepToDelete(step);
+                }}
+              >
+                <View style={styles.stepRow}>
+                  <View style={styles.stepNumber}>
+                    <Text style={styles.stepNumberText}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.stepCopy}>
+                    <Text style={styles.stepText}>{step.text}</Text>
+                    {step.mediaAssets[0] ? (() => {
+                      const { icon, label } = mediaDisplay(step.mediaAssets[0].type);
+                      return (
+                        <View style={styles.photoIndicator}>
+                          <Ionicons name={icon} size={13} color={colors.textMuted} />
+                          <Text style={styles.photoIndicatorText}>{label}</Text>
+                        </View>
+                      );
+                    })() : null}
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit step ${index + 1}`}
+                    disabled={isBusy}
+                    onPress={() => openStepEditor(step.stepId)}
+                    style={({ pressed }) => [
+                      styles.editStepButton,
+                      pressed && !isBusy ? styles.addPhotoActionPressed : null,
+                      isBusy ? styles.controlDisabled : null,
+                    ]}
+                  >
+                    <Text style={styles.editStepText}>Edit</Text>
+                  </Pressable>
                 </View>
-                <View style={styles.stepCopy}>
-                  <Text style={styles.stepText}>{step.text}</Text>
-                  {step.mediaAssets[0] ? (() => {
-                    const { icon, label } = mediaDisplay(step.mediaAssets[0].type);
-                    return (
-                      <View style={styles.photoIndicator}>
-                        <Ionicons name={icon} size={13} color={colors.textMuted} />
-                        <Text style={styles.photoIndicatorText}>{label}</Text>
-                      </View>
-                    );
-                  })() : null}
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit step ${index + 1}`}
-                  disabled={isBusy}
-                  onPress={() => openStepEditor(step.stepId)}
-                  style={({ pressed }) => [
-                    styles.editStepButton,
-                    pressed && !isBusy ? styles.addPhotoActionPressed : null,
-                    isBusy ? styles.controlDisabled : null,
-                  ]}
-                >
-                  <Text style={styles.editStepText}>Edit</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Delete step ${index + 1}`}
-                  disabled={isBusy}
-                  onPress={() => setStepToDelete(step)}
-                  style={({ pressed }) => [
-                    styles.deleteStepButton,
-                    pressed && !isBusy ? styles.deleteStepPressed : null,
-                    isBusy ? styles.controlDisabled : null,
-                  ]}
-                >
-                  <Ionicons name="close" size={20} color={colors.danger} />
-                </Pressable>
-              </View>
+              </Swipeable>
             ))}
           </View>
 
@@ -1148,6 +1167,9 @@ export default function CreateTaskScreen() {
         }}
         onCancel={() => {
           if (!deleteTaskStepMutation.isPending) {
+            if (stepToDelete) {
+              stepSwipeRefs.current.get(stepToDelete.stepId)?.close();
+            }
             setStepToDelete(undefined);
           }
         }}
@@ -1433,13 +1455,32 @@ const styles = StyleSheet.create({
     color: colors.success,
   },
   reorderChip: {
-    ...typography.caption,
-    fontWeight: '700',
-    color: colors.primary,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceWarm,
+  },
+  reorderChipPressed: {
+    opacity: 0.7,
+  },
+  swipeDeleteAction: {
+    width: 96,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.danger,
+  },
+  swipeDeleteText: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.onPrimary,
+  },
+  reorderChipText: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.primary,
   },
   stepHint: {
     ...typography.caption,

@@ -13,144 +13,82 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useConfirmSignUp, useResendSignUpCode, useSignIn } from '../../features/auth';
 import {
-  useConfirmForgotPassword,
-  useForgotPassword,
-  useSignIn,
-} from '../features/auth';
-import {
-  getErrorName,
-  messageForForgotPasswordError,
-  messageForResetPasswordError,
+  messageForConfirmError,
   messageForSignInError,
-} from '../features/auth/lib/errorMessages';
-import type { AuthStackParamList } from '../navigation/types';
-import BackButton from '../shared/components/BackButton';
-import PasswordField from '../shared/components/PasswordField';
-import PrimaryButton from '../shared/components/PrimaryButton';
-import { colors, radius, spacing, typography } from '../shared/theme/tokens';
+} from '../../features/auth/lib/errorMessages';
+import type { AuthStackParamList } from '../../navigation/types';
+import BackButton from '../../shared/components/BackButton';
+import PrimaryButton from '../../shared/components/PrimaryButton';
+import { colors, radius, spacing, typography } from '../../shared/theme/tokens';
 
-type Nav = NativeStackNavigationProp<AuthStackParamList, 'ForgotPasswordReset'>;
-type Route = RouteProp<AuthStackParamList, 'ForgotPasswordReset'>;
+type Nav = NativeStackNavigationProp<AuthStackParamList, 'VerifyEmail'>;
+type Route = RouteProp<AuthStackParamList, 'VerifyEmail'>;
 
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 
-// Matches Cognito's default password policy. Server is the source of truth —
-// these just give fast client feedback before the round-trip.
-const PASSWORD_RULES: { test: (p: string) => boolean; message: string }[] = [
-  { test: (p) => p.length >= 8, message: 'Password must be at least 8 characters.' },
-  { test: (p) => /[A-Z]/.test(p), message: 'Password must include an uppercase letter.' },
-  { test: (p) => /[a-z]/.test(p), message: 'Password must include a lowercase letter.' },
-  { test: (p) => /\d/.test(p), message: 'Password must include a number.' },
-];
-
-function firstPasswordError(password: string): string | undefined {
-  for (const rule of PASSWORD_RULES) {
-    if (!rule.test(password)) return rule.message;
-  }
-  return undefined;
-}
-
-/**
- * Step 2 of the 2-step Forgot Password flow: collect the reset code AND the
- * new password on one screen, then submit both atomically to Cognito's
- * confirmResetPassword. Combining them matches the only backend shape Cognito
- * supports (there is no validate-code-only API).
- *
- * On success we auto-sign-in so the user lands on Home without a third
- * password prompt.
- */
-export default function ForgotPasswordResetScreen() {
+export default function VerifyEmailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
-  const { email } = route.params;
 
-  const confirmMutation = useConfirmForgotPassword();
+  const { email, password } = route.params;
+
+  const confirmMutation = useConfirmSignUp();
+  const resendMutation = useResendSignUpCode();
   const signInMutation = useSignIn();
-  const resendMutation = useForgotPassword();
 
   const [code, setCode] = useState('');
   const [focused, setFocused] = useState(false);
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-
-  const [codeError, setCodeError] = useState<string | undefined>();
-  const [passwordError, setPasswordError] = useState<string | undefined>();
-  const [confirmError, setConfirmError] = useState<string | undefined>();
   const [formError, setFormError] = useState<string | undefined>();
   const [resendInfo, setResendInfo] = useState<string | undefined>();
   const [secondsLeft, setSecondsLeft] = useState(RESEND_COOLDOWN_SECONDS);
 
   const hiddenInputRef = useRef<TextInput>(null);
 
-  // setTimeout-per-tick so resending cleanly restarts the chain when
-  // secondsLeft jumps back to 60.
+  // Tick the resend countdown down to zero. setTimeout-per-tick (not setInterval)
+  // so resending cleanly restarts the chain when secondsLeft jumps back to 60.
   useEffect(() => {
     if (secondsLeft <= 0) return;
     const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(id);
   }, [secondsLeft]);
 
-  const isBusy = confirmMutation.isPending || signInMutation.isPending;
-  const canSubmit =
-    code.length === CODE_LENGTH &&
-    password.length > 0 &&
-    confirm.length > 0 &&
-    !isBusy;
+  const isVerifying = confirmMutation.isPending || signInMutation.isPending;
+  const canVerify = code.length === CODE_LENGTH && !isVerifying;
   const canResend = secondsLeft <= 0 && !resendMutation.isPending;
 
   const handleCodeChange = (text: string) => {
     const cleaned = text.replace(/\D/g, '').slice(0, CODE_LENGTH);
     setCode(cleaned);
-    if (codeError) setCodeError(undefined);
     if (formError) setFormError(undefined);
   };
 
-  const handleSubmit = () => {
-    // Cascade top-to-bottom: show the first failing field's error.
+  const handleVerify = () => {
     setFormError(undefined);
-    setCodeError(undefined);
-    setPasswordError(undefined);
-    setConfirmError(undefined);
-
-    if (code.length !== CODE_LENGTH) {
-      setCodeError('Please enter the 6-digit code.');
-      return;
-    }
-    if (!password) {
-      setPasswordError('Please choose a new password.');
-      return;
-    }
-    const pErr = firstPasswordError(password);
-    if (pErr) {
-      setPasswordError(pErr);
-      return;
-    }
-    if (!confirm) {
-      setConfirmError('Please re-enter your password.');
-      return;
-    }
-    if (confirm !== password) {
-      setConfirmError('Passwords do not match.');
-      return;
-    }
-
     confirmMutation.mutate(
-      { username: email, confirmationCode: code, newPassword: password },
+      { username: email, confirmationCode: code },
       {
-        onSuccess: () => {
-          // Password reset on the server. Auto-sign-in so the user lands on
-          // Home without re-typing anything. When isSignedIn flips true, the
-          // navigation root swaps stacks automatically.
+        onSuccess: (result) => {
+          if (!result.isSignUpComplete) {
+            setFormError(`Additional step required: ${result.nextStep}.`);
+            return;
+          }
+          // Auto sign-in using the password that came through from
+          // CreateAccount, so the user lands in the onboarding flow without
+          // re-typing their credentials. When isSignedIn flips true the
+          // navigation root swaps stacks (Auth → Onboarding or Main).
           signInMutation.mutate(
             { username: email, password },
             {
               onError: (err) => {
+                // Auto sign-in failed — drop them back to manual sign-in
+                // with a clear hint.
                 setFormError(
                   messageForSignInError(err) +
-                    ' Please sign in manually with your new password.',
+                    ' Please sign in manually with your email and password.',
                 );
                 navigation.navigate('SignIn');
               },
@@ -158,17 +96,7 @@ export default function ForgotPasswordResetScreen() {
           );
         },
         onError: (err) => {
-          const name = getErrorName(err);
-          // Route the error to the closest field so the user knows where to
-          // look. CodeMismatch / Expired live with the code boxes; password
-          // policy lives with the password field.
-          if (name === 'CodeMismatchException' || name === 'ExpiredCodeException') {
-            setCodeError(messageForResetPasswordError(err));
-          } else if (name === 'InvalidPasswordException') {
-            setPasswordError(messageForResetPasswordError(err));
-          } else {
-            setFormError(messageForResetPasswordError(err));
-          }
+          setFormError(messageForConfirmError(err));
         },
       },
     );
@@ -186,7 +114,7 @@ export default function ForgotPasswordResetScreen() {
           setResendInfo('A new code has been sent.');
         },
         onError: (err) => {
-          setFormError(messageForForgotPasswordError(err));
+          setFormError(messageForConfirmError(err));
         },
       },
     );
@@ -196,10 +124,8 @@ export default function ForgotPasswordResetScreen() {
     <View style={styles.root}>
       <View style={[styles.banner, { paddingTop: insets.top + spacing.md }]}>
         <BackButton onPress={() => navigation.goBack()} />
-        <Text style={styles.bannerTitle}>Reset Password</Text>
-        <Text style={styles.bannerSubtitle}>
-          Step 2 of 2 — enter code and new password
-        </Text>
+        <Text style={styles.bannerTitle}>Check your email</Text>
+        <Text style={styles.bannerSubtitle}>Step 2 of 3 — verify your address</Text>
       </View>
 
       <KeyboardAvoidingView
@@ -214,9 +140,9 @@ export default function ForgotPasswordResetScreen() {
           ]}
         >
           <Text style={styles.instruction}>
-            Enter the 6-digit code we sent to{' '}
-            <Text style={styles.instructionStrong}>{email}</Text>, then choose a
-            new password.
+            We sent a 6-digit code to{' '}
+            <Text style={styles.instructionStrong}>{email}</Text>. Enter it
+            below to verify your account.
           </Text>
 
           <Pressable
@@ -233,7 +159,6 @@ export default function ForgotPasswordResetScreen() {
                     styles.codeBox,
                     code[i] ? styles.codeBoxFilled : null,
                     isCursor ? styles.codeBoxFocused : null,
-                    codeError ? styles.codeBoxError : null,
                   ]}
                 >
                   <Text style={styles.codeChar}>{code[i] ?? ''}</Text>
@@ -256,52 +181,20 @@ export default function ForgotPasswordResetScreen() {
             onBlur={() => setFocused(false)}
           />
 
-          {codeError ? <Text style={styles.fieldError}>{codeError}</Text> : null}
-
-          <View style={styles.spacer} />
-
-          <PasswordField
-            label="New password"
-            placeholder="Choose a password"
-            value={password}
-            onChangeText={(t) => {
-              setPassword(t);
-              if (passwordError) setPasswordError(undefined);
-              if (formError) setFormError(undefined);
-            }}
-            autoComplete="password-new"
-            textContentType="newPassword"
-            errorText={passwordError}
-          />
-
-          <View style={styles.spacer} />
-
-          <PasswordField
-            label="Confirm Password"
-            placeholder="Re-enter your password"
-            value={confirm}
-            onChangeText={(t) => {
-              setConfirm(t);
-              if (confirmError) setConfirmError(undefined);
-              if (formError) setFormError(undefined);
-            }}
-            autoComplete="password-new"
-            textContentType="newPassword"
-            errorText={confirmError}
-          />
-
           {formError ? <Text style={styles.formError}>{formError}</Text> : null}
           {resendInfo && !formError ? (
             <Text style={styles.formInfo}>{resendInfo}</Text>
           ) : null}
 
           <PrimaryButton
-            label="Save Password"
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-            loading={isBusy}
-            style={styles.submitBtn}
+            label="Verify Email  ✓"
+            onPress={handleVerify}
+            disabled={!canVerify}
+            loading={isVerifying}
+            style={styles.verifyBtn}
           />
+
+          <View style={{ flex: 1 }} />
 
           <View style={styles.footerRow}>
             <Text style={styles.footerText}>Didn't get a code? </Text>
@@ -312,7 +205,9 @@ export default function ForgotPasswordResetScreen() {
               hitSlop={6}
             >
               <Text style={[styles.footerLink, !canResend ? styles.footerLinkDim : null]}>
-                {canResend ? 'Resend email' : `Resend email (${secondsLeft}s)`}
+                {canResend
+                  ? 'Resend email'
+                  : `Resend email (${secondsLeft}s)`}
               </Text>
             </Pressable>
           </View>
@@ -367,6 +262,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.sm,
+    marginBottom: spacing.xl,
   },
   codeBox: {
     flex: 1,
@@ -385,9 +281,6 @@ const styles = StyleSheet.create({
   codeBoxFocused: {
     borderColor: colors.primary,
   },
-  codeBoxError: {
-    borderColor: colors.danger,
-  },
   codeChar: {
     ...typography.title,
     color: colors.text,
@@ -398,27 +291,18 @@ const styles = StyleSheet.create({
     height: 1,
     opacity: 0,
   },
-  fieldError: {
-    ...typography.caption,
-    color: colors.danger,
-    marginTop: spacing.sm,
-    marginLeft: spacing.xs,
-  },
-  spacer: {
-    height: spacing.lg,
-  },
   formError: {
     ...typography.caption,
     color: colors.danger,
-    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   formInfo: {
     ...typography.caption,
     color: colors.success,
-    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  submitBtn: {
-    marginTop: spacing.xl,
+  verifyBtn: {
+    marginTop: spacing.sm,
   },
   footerRow: {
     flexDirection: 'row',

@@ -9,10 +9,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useCreateMyProfile } from '../features/users/hooks/useCreateProfile';
-import PrimaryButton from '../shared/components/PrimaryButton';
-import TextField from '../shared/components/TextField';
-import { colors, radius, spacing, typography } from '../shared/theme/tokens';
+import { useCreateMyProfile } from '../../features/users/hooks/useCreateProfile';
+import PrimaryButton from '../../shared/components/PrimaryButton';
+import TextField from '../../shared/components/TextField';
+import { colors, radius, spacing, typography } from '../../shared/theme/tokens';
 
 export default function OnboardingNameScreen() {
   const insets = useSafeAreaInsets();
