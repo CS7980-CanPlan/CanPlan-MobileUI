@@ -376,6 +376,7 @@ export default function CreateTaskScreen() {
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [stepToDelete, setStepToDelete] = useState<DraftStep>();
   const stepSwipeRefs = useRef<Map<string, Swipeable | null>>(new Map());
+  const titleInputRef = useRef<TextInput>(null);
   const [isCreatedTaskDraft, setIsCreatedTaskDraft] = useState(false);
   const [isDraftCreationPending, setIsDraftCreationPending] = useState(false);
   const [discardDraftVisible, setDiscardDraftVisible] = useState(false);
@@ -918,6 +919,7 @@ export default function CreateTaskScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Task name</Text>
           <TextInput
+            ref={titleInputRef}
             accessibilityLabel="Task name"
             editable={!isBusy}
             value={title}
@@ -934,7 +936,10 @@ export default function CreateTaskScreen() {
           accessibilityRole="button"
           accessibilityLabel="Edit task description"
           disabled={isBusy}
-          onPress={() => setDescEditorVisible(true)}
+          onPress={() => {
+            titleInputRef.current?.blur();
+            setDescEditorVisible(true);
+          }}
           style={({ pressed }) => [
             styles.card,
             styles.descriptionCard,

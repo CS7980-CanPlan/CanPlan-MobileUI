@@ -90,6 +90,7 @@ export default function ManageTasksScreen() {
       setOrderedTasks((prev) => prev.filter((t) => !selectedIds.has(t.taskId)));
       setSelectedIds(new Set());
       setConfirmDelete(false);
+      navigation.navigate('AllTasks');
     } catch (err) {
       setIdentityError(
         err instanceof Error ? err.message : 'Could not delete the selected tasks.',

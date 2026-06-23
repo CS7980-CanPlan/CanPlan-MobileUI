@@ -43,7 +43,7 @@ export default function TaskDetailScreen() {
         throw new Error('Task deletion returned no task. Please try again.');
       }
       setConfirmDelete(false);
-      navigation.goBack();
+      navigation.navigate('AllTasks');
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Could not delete the task.');
       setConfirmDelete(false);

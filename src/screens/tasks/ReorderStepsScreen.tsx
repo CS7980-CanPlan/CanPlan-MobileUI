@@ -195,20 +195,22 @@ export default function ReorderStepsScreen() {
         </Pressable>
       </View>
 
-      <ConfirmDialog
-        visible={confirmDelete}
-        title={`Delete ${selectedCount} ${selectedCount === 1 ? 'step' : 'steps'}?`}
-        message="These steps cannot be restored."
-        confirmLabel={deleteStepMutation.isPending ? 'Deleting…' : 'Delete'}
-        cancelLabel="Cancel"
-        destructive
-        onConfirm={() => {
-          void handleDelete();
-        }}
-        onCancel={() => {
-          if (!deleteStepMutation.isPending) setConfirmDelete(false);
-        }}
-      />
+      {confirmDelete ? (
+        <ConfirmDialog
+          visible
+          title={`Delete ${selectedCount} ${selectedCount === 1 ? 'step' : 'steps'}?`}
+          message="These steps cannot be restored."
+          confirmLabel={deleteStepMutation.isPending ? 'Deleting…' : 'Delete Steps'}
+          cancelLabel="Cancel"
+          destructive
+          onConfirm={() => {
+            void handleDelete();
+          }}
+          onCancel={() => {
+            if (!deleteStepMutation.isPending) setConfirmDelete(false);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
