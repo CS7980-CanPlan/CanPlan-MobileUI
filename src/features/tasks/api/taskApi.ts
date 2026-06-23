@@ -32,7 +32,7 @@ export function listTasksByOwner(ownerId: string, page?: PageInput) {
 
 export function listTasksByCategory(
   ownerId: string,
-  categoryId: string | null | undefined,
+  categoryId: string,
   page?: PageInput,
 ) {
   return canPlanApi.listTasksByCategory(ownerId, categoryId, page);

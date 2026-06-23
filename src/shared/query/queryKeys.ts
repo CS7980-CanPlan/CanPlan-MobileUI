@@ -20,8 +20,7 @@ export const queryKeys = {
   },
   categories: {
     all: ['categories'] as const,
-    owner: (ownerId: string, limit?: number) =>
-      ['categories', 'owner', ownerId, limit] as const,
+    mine: (limit?: number) => ['categories', 'mine', limit] as const,
   },
   tasks: {
     all: ['tasks'] as const,
@@ -30,8 +29,8 @@ export const queryKeys = {
       ['tasks', 'steps', taskId, limit] as const,
     owner: (ownerId: string, limit?: number) =>
       ['tasks', 'owner', ownerId, limit] as const,
-    category: (ownerId: string, categoryId: string | null | undefined, limit?: number) =>
-      ['tasks', 'category', ownerId, categoryId ?? 'NO_CATEGORY', limit] as const,
+    category: (ownerId: string, categoryId: string, limit?: number) =>
+      ['tasks', 'category', ownerId, categoryId, limit] as const,
     allAdmin: (limit?: number) => ['tasks', 'allAdmin', limit] as const,
   },
   assignments: {

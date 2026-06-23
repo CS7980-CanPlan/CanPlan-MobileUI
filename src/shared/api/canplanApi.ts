@@ -145,15 +145,12 @@ export const canPlanApi = {
     return mapConnection(data.listPrimaryUsersBySupporter, mapSupportLink);
   },
 
-  async listCategoriesByOwner(
-    ownerId: string,
-    page: PageInput = {},
-  ): Promise<Connection<Category>> {
+  async listMyCategories(page: PageInput = {}): Promise<Connection<Category>> {
     const data = await graphqlRequest<
-      { listCategoriesByOwner: Connection<Category> },
-      { ownerId: string } & PageInput
-    >(operations.LIST_CATEGORIES_BY_OWNER, { ownerId, ...pageVariables(page) });
-    return data.listCategoriesByOwner;
+      { listMyCategories: Connection<Category> },
+      PageInput
+    >(operations.LIST_MY_CATEGORIES, pageVariables(page));
+    return data.listMyCategories;
   },
 
   async getTask(taskId: string): Promise<Task | null> {
@@ -188,17 +185,15 @@ export const canPlanApi = {
 
   async listTasksByCategory(
     ownerId: string,
-    categoryId: string | null | undefined,
+    categoryId: string,
     page: PageInput = {},
   ): Promise<Connection<Task>> {
-    // The API treats omitted and blank category ids as the NO_CATEGORY bucket.
-    const normalizedCategoryId = categoryId?.trim() || undefined;
     const data = await graphqlRequest<
       { listTasksByCategory: Connection<Task> },
-      { ownerId: string; categoryId?: string | null } & PageInput
+      { ownerId: string; categoryId: string } & PageInput
     >(
       operations.LIST_TASKS_BY_CATEGORY,
-      { ownerId, categoryId: normalizedCategoryId, ...pageVariables(page) },
+      { ownerId, categoryId, ...pageVariables(page) },
     );
     return data.listTasksByCategory;
   },

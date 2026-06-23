@@ -36,13 +36,12 @@ import {
   useCreateTaskCoverImageUploadUrl,
   useDeleteMediaAsset,
   useMediaDownloadUrl,
-  useMediaForTask,
 } from '../features/media/hooks/useMedia';
 import { useTask } from '../features/tasks/hooks/useTask';
-import { useCategoriesByOwner } from '../features/categories/hooks/useCategories';
+import { useMyCategories } from '../features/categories/hooks/useCategories';
 import type { MainStackParamList } from '../navigation/types';
 import { getCurrentUserId } from '../shared/api/authTokenProvider';
-import type { Category, MediaType, RepeatUnit, TaskScheduleInput } from '../shared/api/canplanTypes';
+import type { Category, MediaAsset, MediaType, RepeatUnit, TaskScheduleInput } from '../shared/api/canplanTypes';
 import BackButton from '../shared/components/BackButton';
 import ConfirmDialog from '../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
@@ -55,7 +54,7 @@ interface DraftStep {
   stepId: string;
   order: number;
   text: string;
-  mediaAssetId?: string | null;
+  mediaAssets: MediaAsset[];
 }
 
 interface ScheduleSheetProps {
@@ -74,7 +73,7 @@ interface CategorySheetProps {
   selectedCategoryId?: string;
   busy: boolean;
   onCancel: () => void;
-  onSelect: (categoryId?: string) => void;
+  onSelect: (categoryId: string) => void;
 }
 
 const REPEAT_OPTIONS: Array<{ label: string; repeatUnit: RepeatUnit }> = [
@@ -307,21 +306,9 @@ function CategorySheet({
 
           <ScrollView contentContainerStyle={styles.choiceSheetContent} showsVerticalScrollIndicator={false}>
             <View style={styles.choiceList}>
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel="No category"
-                accessibilityState={{ selected: !selectedCategoryId }}
-                disabled={busy}
-                onPress={() => onSelect(undefined)}
-                style={({ pressed }) => [styles.choiceRow, pressed && !busy ? styles.choiceRowPressed : null]}
-              >
-                <View style={[styles.categoryMark, { backgroundColor: colors.disabled }]} />
-                <Text style={styles.choiceText}>No Category</Text>
-                {!selectedCategoryId ? <Ionicons name="checkmark" size={22} color={colors.primary} /> : null}
-              </Pressable>
-              {categories.map((category) => (
+              {categories.map((category, index) => (
                 <View key={category.categoryId}>
-                  <View style={styles.choiceDivider} />
+                  {index > 0 ? <View style={styles.choiceDivider} /> : null}
                   <Pressable
                     accessibilityRole="radio"
                     accessibilityLabel={category.name}
@@ -365,7 +352,6 @@ export default function CreateTaskScreen() {
   const [taskId, setTaskId] = useState<string>();
   const activeTaskId = existingTaskId ?? taskId ?? '';
   const existingStepsQuery = useTaskSteps(activeTaskId);
-  const existingMediaQuery = useMediaForTask(activeTaskId);
   const existingCoverQuery = useMediaDownloadUrl(
     activeTaskId,
     existingTaskQuery.data?.coverImageAssetId ?? '',
@@ -396,7 +382,7 @@ export default function CreateTaskScreen() {
   const [busyAction, setBusyAction] = useState<string>();
   const [inlineError, setInlineError] = useState<string>();
   const [hydratedTaskId, setHydratedTaskId] = useState<string>();
-  const categoriesQuery = useCategoriesByOwner(categoryOwnerId);
+  const categoriesQuery = useMyCategories(Boolean(categoryOwnerId));
   const taskOperationRef = useRef<string | undefined>(undefined);
   const draftCreationPromiseRef = useRef<Promise<string> | undefined>(undefined);
 
@@ -423,13 +409,6 @@ export default function CreateTaskScreen() {
     () => existingStepsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [existingStepsQuery.data],
   );
-  const mediaTypeByAssetId = useMemo(() => {
-    const map = new Map<string, MediaType>();
-    existingMediaQuery.data?.pages
-      .flatMap((page) => page.items)
-      .forEach((asset) => map.set(asset.assetId, asset.type));
-    return map;
-  }, [existingMediaQuery.data]);
   const isLoadingExistingTask = Boolean(existingTaskId) && (
     existingTaskQuery.isLoading || existingStepsQuery.isLoading
   );
@@ -446,12 +425,23 @@ export default function CreateTaskScreen() {
     setSavedTitle(task.title);
     setDescription(task.description ?? '');
     setSavedDescription(task.description ?? '');
-    setCategoryId(task.categoryId ?? undefined);
-    setSavedCategoryId(task.categoryId ?? undefined);
+    setCategoryId(task.categoryId);
+    setSavedCategoryId(task.categoryId);
     setSchedule(task.schedule ?? undefined);
     setSavedSchedule(task.schedule ?? undefined);
     setHydratedTaskId(task.taskId);
   }, [existingTaskQuery.data, hydratedTaskId]);
+
+  useEffect(() => {
+    if (existingTaskId || taskId || categoryId) {
+      return;
+    }
+
+    const defaultCategory = categories.find((category) => category.isDefault);
+    if (defaultCategory) {
+      setCategoryId(defaultCategory.categoryId);
+    }
+  }, [categories, categoryId, existingTaskId, taskId]);
 
   useEffect(() => {
     if (!activeTaskId || existingStepsQuery.isLoading) {
@@ -465,7 +455,7 @@ export default function CreateTaskScreen() {
           stepId: step.stepId,
           order: step.order,
           text: step.text,
-          mediaAssetId: step.mediaAssetId,
+          mediaAssets: step.mediaAssets,
         })),
     );
   }, [activeTaskId, existingSteps, existingStepsQuery.isLoading]);
@@ -474,9 +464,8 @@ export default function CreateTaskScreen() {
     useCallback(() => {
       if (activeTaskId) {
         void existingStepsQuery.refetch();
-        void existingMediaQuery.refetch();
       }
-    }, [activeTaskId, existingStepsQuery.refetch, existingMediaQuery.refetch]),
+    }, [activeTaskId, existingStepsQuery.refetch]),
   );
 
   useEffect(() => {
@@ -495,7 +484,7 @@ export default function CreateTaskScreen() {
         }
       })
       .catch(() => {
-        // Task creation resolves the identity again and renders the actionable error if unavailable.
+        // Task creation remains available; omitting categoryId uses the server's default category.
       });
 
     return () => {
@@ -525,11 +514,9 @@ export default function CreateTaskScreen() {
 
     setIsDraftCreationPending(true);
     const creation = (async () => {
-      const ownerId = await getCurrentUserId();
       const createdTask = await createTaskMutation.mutateAsync({
-        ownerId,
         title: taskTitle,
-        status: 'DRAFT',
+        ...(categoryId ? { categoryId } : {}),
       });
       if (!createdTask) {
         throw new Error('Task creation returned no task. Please try again.');
@@ -537,6 +524,8 @@ export default function CreateTaskScreen() {
 
       setTaskId(createdTask.taskId);
       setSavedTitle(taskTitle);
+      setCategoryId(createdTask.categoryId);
+      setSavedCategoryId(createdTask.categoryId);
       setIsCreatedTaskDraft(true);
       return createdTask.taskId;
     })();
@@ -748,7 +737,7 @@ export default function CreateTaskScreen() {
         const updatedTask = await updateTaskMutation.mutateAsync({
           taskId: id,
           ...(trimmedTitle !== savedTitle ? { title: trimmedTitle } : {}),
-          ...(categoryChanged ? { categoryId: categoryId ?? null } : {}),
+          ...(categoryChanged && categoryId ? { categoryId } : {}),
           ...(scheduleChanged ? { schedule: schedule ?? null } : {}),
           ...(descriptionChanged ? { description: trimmedDescription || null } : {}),
         });
@@ -1011,8 +1000,8 @@ export default function CreateTaskScreen() {
                 </View>
                 <View style={styles.stepCopy}>
                   <Text style={styles.stepText}>{step.text}</Text>
-                  {step.mediaAssetId ? (() => {
-                    const { icon, label } = mediaDisplay(mediaTypeByAssetId.get(step.mediaAssetId));
+                  {step.mediaAssets[0] ? (() => {
+                    const { icon, label } = mediaDisplay(step.mediaAssets[0].type);
                     return (
                       <View style={styles.photoIndicator}>
                         <Ionicons name={icon} size={13} color={colors.textMuted} />

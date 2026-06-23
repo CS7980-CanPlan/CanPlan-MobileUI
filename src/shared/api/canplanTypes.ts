@@ -1,5 +1,5 @@
 /**
- * TypeScript contract for the CanPlan GraphQL schema (2026-06-20).
+ * TypeScript contract for the CanPlan GraphQL schema (2026-06-22).
  *
  * These are the public client types, not generated transport types. In
  * particular, AWSJSON values are exposed as parsed JSON and encoded by
@@ -14,7 +14,6 @@ export type JsonValue =
 
 export type UserRole = 'PRIMARY_USER' | 'SUPPORT_PERSON' | 'ORG_ADMIN';
 export type SupportLinkStatus = 'PENDING' | 'ACTIVE' | 'REVOKED';
-export type TaskStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 export type AssignmentStatus = 'TO_DO' | 'OVERDUE' | 'COMPLETED' | 'SKIPPED';
 /** Values allowed by updateAssignmentStatus; OVERDUE is derived by the API. */
 export type PersistedAssignmentStatus = Exclude<AssignmentStatus, 'OVERDUE'>;
@@ -28,6 +27,7 @@ export interface UserProfile {
   email?: string | null;
   organizationId?: string | null;
   accessibilitySettings?: JsonValue | null;
+  defaultCategoryId?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -48,6 +48,7 @@ export interface Category {
   name: string;
   color?: string | null;
   sortOrder?: number | null;
+  isDefault: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -64,10 +65,9 @@ export interface Task {
   taskId: string;
   ownerId: string;
   title: string;
-  categoryId?: string | null;
+  categoryId: string;
   description?: string | null;
   scheduleRule?: string | null;
-  status: TaskStatus;
   schedule?: TaskSchedule | null;
   nextOccurrenceAt?: string | null;
   notificationEnabled?: boolean | null;
@@ -83,7 +83,8 @@ export interface TaskStep {
   taskId: string;
   order: number;
   text: string;
-  mediaAssetId?: string | null;
+  description?: string | null;
+  mediaAssets: MediaAsset[];
   createdAt: string;
   updatedAt?: string | null;
 }
@@ -182,7 +183,6 @@ export interface CreateSupportLinkInput {
 }
 
 export interface CreateCategoryInput {
-  ownerId: string;
   name: string;
   color?: string | null;
   sortOrder?: number | null;
@@ -198,15 +198,14 @@ export interface TaskScheduleInput {
 
 export interface CreateTaskStepNestedInput {
   text: string;
+  description?: string | null;
 }
 
 export interface CreateTaskInput {
-  ownerId: string;
   title: string;
   categoryId?: string | null;
   description?: string | null;
   scheduleRule?: string | null;
-  status?: TaskStatus | null;
   steps?: CreateTaskStepNestedInput[] | null;
   schedule?: TaskScheduleInput | null;
   notificationEnabled?: boolean | null;
@@ -219,7 +218,6 @@ export interface UpdateTaskInput {
   categoryId?: string | null;
   description?: string | null;
   scheduleRule?: string | null;
-  status?: TaskStatus | null;
   schedule?: TaskScheduleInput | null;
   notificationEnabled?: boolean | null;
   coverImageS3Key?: string | null;
@@ -229,14 +227,21 @@ export interface CreateTaskStepInput {
   taskId: string;
   order: number;
   text: string;
+  description?: string | null;
+  media?: SetTaskStepMediaInput[] | null;
+}
+
+export interface SetTaskStepMediaInput {
+  type: MediaType;
+  assetId?: string | null;
 }
 
 export interface UpdateTaskStepInput {
   taskId: string;
   stepId: string;
   text?: string | null;
-  mediaAssetId?: string | null;
-  removeMedia?: boolean | null;
+  description?: string | null;
+  media?: SetTaskStepMediaInput[] | null;
 }
 
 export interface DeleteTaskStepInput {

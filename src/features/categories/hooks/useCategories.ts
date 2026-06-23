@@ -2,17 +2,16 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 
 import type { CreateCategoryInput } from '../../../shared/api/canplanTypes';
 import { queryKeys } from '../../../shared/query/queryKeys';
-import { createCategory, listCategoriesByOwner } from '../api/categoryApi';
+import { createCategory, listMyCategories } from '../api/categoryApi';
 
-/** Paginated category list for one owner. NO_CATEGORY is an implicit task bucket, not an item here. */
-export function useCategoriesByOwner(ownerId: string, limit = 50) {
+/** Paginated category list for the authenticated user, including their real default category. */
+export function useMyCategories(enabled = true, limit = 50) {
   return useInfiniteQuery({
-    queryKey: queryKeys.categories.owner(ownerId, limit),
+    queryKey: queryKeys.categories.mine(limit),
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      listCategoriesByOwner(ownerId, { limit, nextToken: pageParam }),
+    queryFn: ({ pageParam }) => listMyCategories({ limit, nextToken: pageParam }),
     getNextPageParam: (lastPage) => lastPage.nextToken ?? undefined,
-    enabled: Boolean(ownerId),
+    enabled,
   });
 }
 
