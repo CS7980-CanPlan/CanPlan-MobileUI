@@ -34,7 +34,6 @@ import {
   useCreateMediaUploadUrl,
   useDeleteMediaAsset,
   useMediaDownloadUrl,
-  useMediaForTask,
 } from '../features/media/hooks/useMedia';
 import { useCreateTaskStep, useTaskSteps, useUpdateTaskStep } from '../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../navigation/types';
@@ -86,7 +85,6 @@ export default function CreateTaskStepScreen() {
   const isEditing = Boolean(stepId);
 
   const stepsQuery = useTaskSteps(taskId);
-  const taskMediaQuery = useMediaForTask(taskId);
   const createStepMutation = useCreateTaskStep();
   const updateStepMutation = useUpdateTaskStep();
   const createMediaUploadUrlMutation = useCreateMediaUploadUrl();
@@ -97,18 +95,13 @@ export default function CreateTaskStepScreen() {
     () => stepsQuery.data?.pages.flatMap((p) => p.items).find((s) => s.stepId === stepId),
     [stepId, stepsQuery.data],
   );
-  const existingMediaQuery = useMediaDownloadUrl(taskId, currentStep?.mediaAssetId ?? '');
-  const existingAsset = useMemo(
-    () =>
-      taskMediaQuery.data?.pages
-        .flatMap((p) => p.items)
-        .find((a) => a.assetId === currentStep?.mediaAssetId),
-    [taskMediaQuery.data, currentStep?.mediaAssetId],
-  );
+  const existingAsset = currentStep?.mediaAssets[0];
+  const existingMediaQuery = useMediaDownloadUrl(taskId, existingAsset?.assetId ?? '');
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [initialTitle, setInitialTitle] = useState('');
+  const [initialDescription, setInitialDescription] = useState('');
   const [hydratedStepId, setHydratedStepId] = useState<string>();
   const [busyAction, setBusyAction] = useState<string>();
   const [inlineError, setInlineError] = useState<string>();
@@ -160,6 +153,8 @@ export default function CreateTaskStepScreen() {
     if (!currentStep || hydratedStepId === currentStep.stepId) return;
     setTitle(currentStep.text);
     setInitialTitle(currentStep.text);
+    setDescription(currentStep.description ?? '');
+    setInitialDescription(currentStep.description ?? '');
     setHydratedStepId(currentStep.stepId);
   }, [currentStep, hydratedStepId]);
 
@@ -360,17 +355,12 @@ export default function CreateTaskStepScreen() {
       return;
     }
 
-    // Already-uploaded asset — delete from S3 + DynamoDB and detach from the step.
-    if (currentStep?.mediaAssetId) {
+    // Deleting a step asset also clears its media slot server-side.
+    if (currentStep && existingAsset) {
       setBusyAction('delete-media');
       setInlineError(undefined);
       try {
-        await deleteMediaAssetMutation.mutateAsync({ taskId, assetId: currentStep.mediaAssetId });
-        await updateStepMutation.mutateAsync({
-          taskId,
-          stepId: currentStep.stepId,
-          removeMedia: true,
-        });
+        await deleteMediaAssetMutation.mutateAsync({ taskId, assetId: existingAsset.assetId });
         setRemoveExistingMedia(true);
       } catch (error) {
         setInlineError(errorMessage(error));
@@ -391,15 +381,25 @@ export default function CreateTaskStepScreen() {
     setBusyAction('step');
     setInlineError(undefined);
     try {
+      const trimmedDescription = description.trim();
       if (!isEditing) {
         const order =
           (stepsQuery.data?.pages.flatMap((p) => p.items).reduce((max, s) => Math.max(max, s.order), 0) ?? 0) + 1;
-        const createdStep = await createStepMutation.mutateAsync({ taskId, order, text: trimmedTitle });
+        const createdStep = await createStepMutation.mutateAsync({
+          taskId,
+          order,
+          text: trimmedTitle,
+          ...(trimmedDescription ? { description: trimmedDescription } : {}),
+        });
         if (!createdStep) throw new Error('Step creation failed. Please try again.');
 
         if (pendingMedia) {
           const mediaAssetId = await uploadMedia(pendingMedia);
-          await updateStepMutation.mutateAsync({ taskId, stepId: createdStep.stepId, mediaAssetId });
+          await updateStepMutation.mutateAsync({
+            taskId,
+            stepId: createdStep.stepId,
+            media: [{ type: pendingMedia.mediaType, assetId: mediaAssetId }],
+          });
         }
         shouldGoBack = true;
         return;
@@ -408,16 +408,23 @@ export default function CreateTaskStepScreen() {
       if (!currentStep) throw new Error('Step not found. Go back and try again.');
 
       const textChanged = trimmedTitle !== initialTitle;
+      const descriptionChanged = trimmedDescription !== initialDescription.trim();
       if (pendingMedia) {
         const mediaAssetId = await uploadMedia(pendingMedia);
         await updateStepMutation.mutateAsync({
           taskId,
           stepId: currentStep.stepId,
           ...(textChanged ? { text: trimmedTitle } : {}),
-          mediaAssetId,
+          ...(descriptionChanged ? { description: trimmedDescription || null } : {}),
+          media: [{ type: pendingMedia.mediaType, assetId: mediaAssetId }],
         });
-      } else if (textChanged) {
-        await updateStepMutation.mutateAsync({ taskId, stepId: currentStep.stepId, text: trimmedTitle });
+      } else if (textChanged || descriptionChanged) {
+        await updateStepMutation.mutateAsync({
+          taskId,
+          stepId: currentStep.stepId,
+          ...(textChanged ? { text: trimmedTitle } : {}),
+          ...(descriptionChanged ? { description: trimmedDescription || null } : {}),
+        });
       }
       shouldGoBack = true;
     } catch (error) {
@@ -461,7 +468,7 @@ export default function CreateTaskStepScreen() {
   const audioPositionSec = audioStatus.currentTime || 0;
   const audioProgress = audioDurationSec > 0 ? Math.min(audioPositionSec / audioDurationSec, 1) : 0;
   const audioTimeMs = (audioPositionSec > 0 ? audioPositionSec : audioDurationSec) * 1000;
-  const removingUploadedAsset = !pendingMedia && Boolean(currentStep?.mediaAssetId);
+  const removingUploadedAsset = !pendingMedia && Boolean(existingAsset);
 
   return (
     <View style={styles.root}>

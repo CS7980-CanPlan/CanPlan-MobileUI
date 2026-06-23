@@ -5,8 +5,8 @@ import type { CreateCategoryInput, PageInput } from '../../../shared/api/canplan
 
 export { canPlanApi as categoriesApi };
 
-export function listCategoriesByOwner(ownerId: string, page?: PageInput) {
-  return canPlanApi.listCategoriesByOwner(ownerId, page);
+export function listMyCategories(page?: PageInput) {
+  return canPlanApi.listMyCategories(page);
 }
 
 export function createCategory(input: CreateCategoryInput) {

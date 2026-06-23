@@ -17,12 +17,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useCategoriesByOwner } from '../features/categories/hooks/useCategories';
-import { useMediaDownloadUrl, useMediaForTask } from '../features/media/hooks/useMedia';
+import { useMyCategories } from '../features/categories/hooks/useCategories';
+import { useMediaDownloadUrl } from '../features/media/hooks/useMedia';
 import { useTask } from '../features/tasks/hooks/useTask';
 import { useTaskSteps } from '../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../navigation/types';
-import type { MediaType, TaskStep } from '../shared/api/canplanTypes';
+import type { TaskStep } from '../shared/api/canplanTypes';
 import BackButton from '../shared/components/BackButton';
 import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
 
@@ -125,18 +125,18 @@ interface StepCardProps {
   taskId: string;
   step: TaskStep;
   index: number;
-  mediaType?: MediaType;
   speaking: boolean;
   onListen: () => void;
 }
 
-function StepCard({ taskId, step, index, mediaType, speaking, onListen }: StepCardProps) {
-  const mediaQuery = useMediaDownloadUrl(taskId, step.mediaAssetId ?? '');
+function StepCard({ taskId, step, index, speaking, onListen }: StepCardProps) {
+  const media = step.mediaAssets[0];
+  const mediaQuery = useMediaDownloadUrl(taskId, media?.assetId ?? '');
   const mediaUri = mediaQuery.data?.downloadUrl ?? null;
-  const hasMedia = Boolean(step.mediaAssetId);
-  const isImage = mediaType === 'IMAGE';
-  const isVideo = mediaType === 'VIDEO';
-  const isAudio = mediaType === 'AUDIO';
+  const hasMedia = Boolean(media);
+  const isImage = media?.type === 'IMAGE';
+  const isVideo = media?.type === 'VIDEO';
+  const isAudio = media?.type === 'AUDIO';
   const videoPlayer = useVideoPlayer(isVideo ? mediaUri : null, (player) => {
     player.loop = false;
   });
@@ -247,8 +247,7 @@ export default function TaskViewScreen() {
 
   const taskQuery = useTask(taskId);
   const stepsQuery = useTaskSteps(taskId);
-  const mediaQuery = useMediaForTask(taskId);
-  const categoriesQuery = useCategoriesByOwner(taskQuery.data?.ownerId ?? '');
+  const categoriesQuery = useMyCategories(Boolean(taskQuery.data?.ownerId));
 
   const [speakingStepId, setSpeakingStepId] = useState<string>();
 
@@ -259,13 +258,6 @@ export default function TaskViewScreen() {
       ),
     [stepsQuery.data],
   );
-  const mediaTypeByAssetId = useMemo(() => {
-    const map = new Map<string, MediaType>();
-    mediaQuery.data?.pages
-      .flatMap((page) => page.items)
-      .forEach((asset) => map.set(asset.assetId, asset.type));
-    return map;
-  }, [mediaQuery.data]);
   const category = useMemo(() => {
     const list = categoriesQuery.data?.pages.flatMap((page) => page.items) ?? [];
     return list.find((c) => c.categoryId === taskQuery.data?.categoryId);
@@ -358,7 +350,6 @@ export default function TaskViewScreen() {
                 taskId={taskId}
                 step={step}
                 index={index}
-                mediaType={step.mediaAssetId ? mediaTypeByAssetId.get(step.mediaAssetId) : undefined}
                 speaking={speakingStepId === step.stepId}
                 onListen={() => handleListen(step, index)}
               />

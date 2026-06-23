@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useCategoriesByOwner } from '../features/categories/hooks/useCategories';
+import { useMyCategories } from '../features/categories/hooks/useCategories';
 import { useMediaDownloadUrl } from '../features/media/hooks/useMedia';
 import { useDeleteTask, useTaskSteps, useTasksByOwner } from '../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../navigation/types';
@@ -112,7 +112,7 @@ export default function AllTasksScreen() {
   const [identityError, setIdentityError] = useState<string>();
   const [taskToDelete, setTaskToDelete] = useState<Task>();
   const tasksQuery = useTasksByOwner(ownerId);
-  const categoriesQuery = useCategoriesByOwner(ownerId);
+  const categoriesQuery = useMyCategories(Boolean(ownerId));
   const deleteTaskMutation = useDeleteTask();
 
   useEffect(() => {

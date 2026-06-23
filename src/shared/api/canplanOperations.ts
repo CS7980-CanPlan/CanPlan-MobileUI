@@ -1,7 +1,7 @@
-/** GraphQL documents for the CanPlan schema dated 2026-06-20. */
+/** GraphQL documents for the CanPlan schema dated 2026-06-22. */
 
 const USER_PROFILE_FIELDS = /* GraphQL */ `
-  userId role displayName email organizationId accessibilitySettings createdAt updatedAt
+  userId role displayName email organizationId accessibilitySettings defaultCategoryId createdAt updatedAt
 `;
 
 const SUPPORT_LINK_FIELDS = /* GraphQL */ `
@@ -9,15 +9,19 @@ const SUPPORT_LINK_FIELDS = /* GraphQL */ `
 `;
 
 const CATEGORY_FIELDS = /* GraphQL */ `
-  categoryId ownerId name color sortOrder createdAt updatedAt
+  categoryId ownerId name color sortOrder isDefault createdAt updatedAt
+`;
+
+const MEDIA_ASSET_FIELDS = /* GraphQL */ `
+  assetId taskId stepId s3Key type mimeType ownerId size createdAt updatedAt
 `;
 
 const TASK_STEP_FIELDS = /* GraphQL */ `
-  stepId taskId order text mediaAssetId createdAt updatedAt
+  stepId taskId order text description mediaAssets { ${MEDIA_ASSET_FIELDS} } createdAt updatedAt
 `;
 
 const TASK_FIELDS = /* GraphQL */ `
-  taskId ownerId title categoryId description scheduleRule status
+  taskId ownerId title categoryId description scheduleRule
   schedule { repeatEvery repeatUnit firstOccurrenceAt timezone enabled }
   nextOccurrenceAt notificationEnabled coverImageAssetId createdAt updatedAt
 `;
@@ -28,10 +32,6 @@ const ASSIGNMENT_FIELDS = /* GraphQL */ `
 
 const ASSIGNMENT_STEP_FIELDS = /* GraphQL */ `
   assignmentId taskId stepId order text completed completedAt createdAt updatedAt
-`;
-
-const MEDIA_ASSET_FIELDS = /* GraphQL */ `
-  assetId taskId stepId s3Key type mimeType ownerId size createdAt updatedAt
 `;
 
 export const HEALTH_CHECK = /* GraphQL */ `
@@ -62,9 +62,9 @@ export const LIST_PRIMARY_USERS_BY_SUPPORTER = /* GraphQL */ `
   }
 `;
 
-export const LIST_CATEGORIES_BY_OWNER = /* GraphQL */ `
-  query ListCategoriesByOwner($ownerId: ID!, $limit: Int, $nextToken: String) {
-    listCategoriesByOwner(ownerId: $ownerId, limit: $limit, nextToken: $nextToken) {
+export const LIST_MY_CATEGORIES = /* GraphQL */ `
+  query ListMyCategories($limit: Int, $nextToken: String) {
+    listMyCategories(limit: $limit, nextToken: $nextToken) {
       items { ${CATEGORY_FIELDS} }
       nextToken
     }
@@ -96,7 +96,7 @@ export const LIST_TASKS_BY_OWNER = /* GraphQL */ `
 `;
 
 export const LIST_TASKS_BY_CATEGORY = /* GraphQL */ `
-  query ListTasksByCategory($ownerId: ID!, $categoryId: ID, $limit: Int, $nextToken: String) {
+  query ListTasksByCategory($ownerId: ID!, $categoryId: ID!, $limit: Int, $nextToken: String) {
     listTasksByCategory(ownerId: $ownerId, categoryId: $categoryId, limit: $limit, nextToken: $nextToken) {
       items { ${TASK_FIELDS} }
       nextToken

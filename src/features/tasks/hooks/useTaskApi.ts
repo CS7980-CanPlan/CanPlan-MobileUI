@@ -32,21 +32,19 @@ export function useTasksByOwner(ownerId: string, limit = 50) {
   });
 }
 
-/** Paginated task-template list for one category; omit categoryId for NO_CATEGORY. */
+/** Paginated task-template list for one real category, including the default category. */
 export function useTasksByCategory(
   ownerId: string,
-  categoryId: string | null | undefined,
+  categoryId: string,
   limit = 50,
 ) {
-  const normalizedCategoryId = categoryId?.trim() || undefined;
-
   return useInfiniteQuery({
-    queryKey: queryKeys.tasks.category(ownerId, normalizedCategoryId, limit),
+    queryKey: queryKeys.tasks.category(ownerId, categoryId, limit),
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
-      listTasksByCategory(ownerId, normalizedCategoryId, { limit, nextToken: pageParam }),
+      listTasksByCategory(ownerId, categoryId, { limit, nextToken: pageParam }),
     getNextPageParam: (lastPage) => lastPage.nextToken ?? undefined,
-    enabled: Boolean(ownerId),
+    enabled: Boolean(ownerId && categoryId),
   });
 }
 
