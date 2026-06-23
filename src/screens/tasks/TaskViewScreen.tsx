@@ -17,24 +17,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useMyCategories } from '../features/categories/hooks/useCategories';
-import { useMediaDownloadUrl } from '../features/media/hooks/useMedia';
-import { useTask } from '../features/tasks/hooks/useTask';
-import { useTaskSteps } from '../features/tasks/hooks/useTaskApi';
-import type { MainStackParamList } from '../navigation/types';
-import type { TaskStep } from '../shared/api/canplanTypes';
-import BackButton from '../shared/components/BackButton';
-import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
+import { useMediaDownloadUrl } from '../../features/media/hooks/useMedia';
+import { useTask } from '../../features/tasks/hooks/useTask';
+import { useTaskSteps } from '../../features/tasks/hooks/useTaskApi';
+import type { MainStackParamList } from '../../navigation/types';
+import type { TaskStep } from '../../shared/api/canplanTypes';
+import BackButton from '../../shared/components/BackButton';
+import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
 type TaskViewNavigation = NativeStackNavigationProp<MainStackParamList, 'TaskView'>;
 type TaskViewRoute = RouteProp<MainStackParamList, 'TaskView'>;
 
 const TEAL = '#3DB8AD';
 const TEAL_LIGHT = '#EBF9F8';
-
-function pluralizeSteps(count: number): string {
-  return `${count} ${count === 1 ? 'step' : 'steps'}`;
-}
 
 // ── Audio player (inline, per-step) ──────────────────────────────────────────
 
@@ -247,7 +242,6 @@ export default function TaskViewScreen() {
 
   const taskQuery = useTask(taskId);
   const stepsQuery = useTaskSteps(taskId);
-  const categoriesQuery = useMyCategories(Boolean(taskQuery.data?.ownerId));
 
   const [speakingStepId, setSpeakingStepId] = useState<string>();
 
@@ -258,10 +252,6 @@ export default function TaskViewScreen() {
       ),
     [stepsQuery.data],
   );
-  const category = useMemo(() => {
-    const list = categoriesQuery.data?.pages.flatMap((page) => page.items) ?? [];
-    return list.find((c) => c.categoryId === taskQuery.data?.categoryId);
-  }, [categoriesQuery.data, taskQuery.data?.categoryId]);
 
   // Stop any in-flight speech when leaving the screen.
   useEffect(() => {
@@ -285,8 +275,6 @@ export default function TaskViewScreen() {
     });
   };
 
-  const categoryColor = category?.color?.trim() || colors.primary;
-  const categoryName = category?.name?.trim();
   const stepCount = steps.length;
   const isLoading = taskQuery.isLoading || stepsQuery.isLoading;
   const error = taskQuery.error?.message;
@@ -313,23 +301,26 @@ export default function TaskViewScreen() {
   }
 
   const task = taskQuery.data;
-  const taskDescription = task.description?.trim();
 
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <BackButton onPress={() => navigation.goBack()} variant="dark" />
-        <View style={styles.headerCopy}>
-          <Text accessibilityRole="header" numberOfLines={2} style={styles.headerTitle}>
-            {task.title}
-          </Text>
-          {taskDescription ? (
-            <Text style={styles.headerDescription}>{taskDescription}</Text>
-          ) : null}
-          <Text style={[styles.headerMeta, { color: categoryName ? categoryColor : colors.textMuted }]}>
-            {categoryName ? `${categoryName} · ${pluralizeSteps(stepCount)}` : pluralizeSteps(stepCount)}
-          </Text>
-        </View>
+        <Text
+          accessibilityRole="header"
+          numberOfLines={2}
+          style={styles.headerTitle}
+        >
+          {task.title}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open task details"
+          onPress={() => navigation.navigate('TaskDetail', { taskId })}
+          style={({ pressed }) => [styles.menuButton, pressed ? styles.pressed : null]}
+        >
+          <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+        </Pressable>
       </View>
 
       <ScrollView
@@ -386,23 +377,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.lg,
   },
-  headerCopy: {
-    flex: 1,
-  },
   headerTitle: {
+    flex: 1,
     ...typography.title,
-    fontSize: 24,
-    lineHeight: 30,
     color: colors.text,
   },
-  headerDescription: {
-    ...typography.body,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  headerMeta: {
-    ...typography.bodyStrong,
-    marginTop: spacing.xs,
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceWarm,
   },
   content: {
     paddingHorizontal: spacing.xl,

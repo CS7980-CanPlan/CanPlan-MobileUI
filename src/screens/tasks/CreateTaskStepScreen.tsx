@@ -34,13 +34,13 @@ import {
   useCreateMediaUploadUrl,
   useDeleteMediaAsset,
   useMediaDownloadUrl,
-} from '../features/media/hooks/useMedia';
-import { useCreateTaskStep, useTaskSteps, useUpdateTaskStep } from '../features/tasks/hooks/useTaskApi';
-import type { MainStackParamList } from '../navigation/types';
-import { getCurrentUserId } from '../shared/api/authTokenProvider';
-import type { MediaType } from '../shared/api/canplanTypes';
-import ConfirmDialog from '../shared/components/ConfirmDialog';
-import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
+} from '../../features/media/hooks/useMedia';
+import { useCreateTaskStep, useTaskSteps, useUpdateTaskStep } from '../../features/tasks/hooks/useTaskApi';
+import type { MainStackParamList } from '../../navigation/types';
+import { getCurrentUserId } from '../../shared/api/authTokenProvider';
+import type { MediaType } from '../../shared/api/canplanTypes';
+import ConfirmDialog from '../../shared/components/ConfirmDialog';
+import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
 type StepNavigation = NativeStackNavigationProp<MainStackParamList, 'CreateTaskStep'>;
 type StepRoute = RouteProp<MainStackParamList, 'CreateTaskStep'>;

@@ -6,23 +6,27 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppProviders } from './src/app/AppProviders';
 import { useSession } from './src/app/SessionContext';
 import { useCurrentUser } from './src/features/auth';
 import { useMyProfile } from './src/features/users/hooks/useMyProfile';
-import AllTasksScreen from './src/screens/AllTasksScreen';
-import CreateAccountScreen from './src/screens/CreateAccountScreen';
-import CreateTaskScreen from './src/screens/CreateTaskScreen';
-import CreateTaskStepScreen from './src/screens/CreateTaskStepScreen';
-import ForgotPasswordResetScreen from './src/screens/ForgotPasswordResetScreen';
-import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
+import CreateAccountScreen from './src/screens/auth/CreateAccountScreen';
+import ForgotPasswordResetScreen from './src/screens/auth/ForgotPasswordResetScreen';
+import ForgotPasswordScreen from './src/screens/auth/ForgotPasswordScreen';
+import OnboardingNameScreen from './src/screens/auth/OnboardingNameScreen';
+import SignInScreen from './src/screens/auth/SignInScreen';
+import VerifyEmailScreen from './src/screens/auth/VerifyEmailScreen';
 import HomeScreen from './src/screens/HomeScreen';
-import OnboardingNameScreen from './src/screens/OnboardingNameScreen';
-import SignInScreen from './src/screens/SignInScreen';
-import TaskViewScreen from './src/screens/TaskViewScreen';
-import VerifyEmailScreen from './src/screens/VerifyEmailScreen';
+import AllTasksScreen from './src/screens/tasks/AllTasksScreen';
+import CreateTaskScreen from './src/screens/tasks/CreateTaskScreen';
+import CreateTaskStepScreen from './src/screens/tasks/CreateTaskStepScreen';
+import ManageTasksScreen from './src/screens/tasks/ManageTasksScreen';
+import ReorderStepsScreen from './src/screens/tasks/ReorderStepsScreen';
+import TaskDetailScreen from './src/screens/tasks/TaskDetailScreen';
+import TaskViewScreen from './src/screens/tasks/TaskViewScreen';
 import { colors } from './src/shared/theme/tokens';
 
 const Stack = createNativeStackNavigator();
@@ -78,13 +82,16 @@ function RootStack() {
         <>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="AllTasks" component={AllTasksScreen} />
+          <Stack.Screen name="ManageTasks" component={ManageTasksScreen} />
           <Stack.Screen name="TaskView" component={TaskViewScreen} />
+          <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
           <Stack.Screen
             name="CreateTask"
             component={CreateTaskScreen}
             options={{ headerBackButtonMenuEnabled: false }}
           />
           <Stack.Screen name="CreateTaskStep" component={CreateTaskStepScreen} />
+          <Stack.Screen name="ReorderSteps" component={ReorderStepsScreen} />
         </>
       )}
     </Stack.Navigator>
@@ -101,18 +108,23 @@ function Splash() {
 
 export default function App() {
   return (
-    <AppProviders>
-      <SafeAreaProvider>
-        <NavigationContainer>
-          <RootStack />
-        </NavigationContainer>
-        <StatusBar style="dark" />
-      </SafeAreaProvider>
-    </AppProviders>
+    <GestureHandlerRootView style={styles.gestureRoot}>
+      <AppProviders>
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <RootStack />
+          </NavigationContainer>
+          <StatusBar style="dark" />
+        </SafeAreaProvider>
+      </AppProviders>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
   splash: {
     flex: 1,
     backgroundColor: colors.bg,

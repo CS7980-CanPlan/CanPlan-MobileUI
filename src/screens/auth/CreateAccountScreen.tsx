@@ -16,14 +16,14 @@ import {
   getErrorMessage,
   getErrorName,
   messageForSignUpError,
-} from '../features/auth/lib/errorMessages';
-import { useResendSignUpCode, useSignUp } from '../features/auth';
-import type { AuthStackParamList } from '../navigation/types';
-import BackButton from '../shared/components/BackButton';
-import PasswordField from '../shared/components/PasswordField';
-import PrimaryButton from '../shared/components/PrimaryButton';
-import TextField from '../shared/components/TextField';
-import { colors, radius, spacing, typography } from '../shared/theme/tokens';
+} from '../../features/auth/lib/errorMessages';
+import { useResendSignUpCode, useSignUp } from '../../features/auth';
+import type { AuthStackParamList } from '../../navigation/types';
+import BackButton from '../../shared/components/BackButton';
+import PasswordField from '../../shared/components/PasswordField';
+import PrimaryButton from '../../shared/components/PrimaryButton';
+import TextField from '../../shared/components/TextField';
+import { colors, radius, spacing, typography } from '../../shared/theme/tokens';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'CreateAccount'>;
 

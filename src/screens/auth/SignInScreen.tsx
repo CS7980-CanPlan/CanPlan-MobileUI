@@ -12,15 +12,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useSession } from '../app/SessionContext';
-import { useSignIn } from '../features/auth';
-import { messageForSignInError } from '../features/auth/lib/errorMessages';
-import type { AuthStackParamList } from '../navigation/types';
-import PasswordField from '../shared/components/PasswordField';
-import PrimaryButton from '../shared/components/PrimaryButton';
-import SecondaryButton from '../shared/components/SecondaryButton';
-import TextField from '../shared/components/TextField';
-import { colors, radius, spacing, typography } from '../shared/theme/tokens';
+import { useSession } from '../../app/SessionContext';
+import { useSignIn } from '../../features/auth';
+import { messageForSignInError } from '../../features/auth/lib/errorMessages';
+import type { AuthStackParamList } from '../../navigation/types';
+import PasswordField from '../../shared/components/PasswordField';
+import PrimaryButton from '../../shared/components/PrimaryButton';
+import SecondaryButton from '../../shared/components/SecondaryButton';
+import TextField from '../../shared/components/TextField';
+import { colors, radius, spacing, typography } from '../../shared/theme/tokens';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'SignIn'>;
 

@@ -11,16 +11,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useForgotPassword } from '../features/auth';
+import { useForgotPassword } from '../../features/auth';
 import {
   getErrorName,
   messageForForgotPasswordError,
-} from '../features/auth/lib/errorMessages';
-import type { AuthStackParamList } from '../navigation/types';
-import BackButton from '../shared/components/BackButton';
-import PrimaryButton from '../shared/components/PrimaryButton';
-import TextField from '../shared/components/TextField';
-import { colors, radius, spacing, typography } from '../shared/theme/tokens';
+} from '../../features/auth/lib/errorMessages';
+import type { AuthStackParamList } from '../../navigation/types';
+import BackButton from '../../shared/components/BackButton';
+import PrimaryButton from '../../shared/components/PrimaryButton';
+import TextField from '../../shared/components/TextField';
+import { colors, radius, spacing, typography } from '../../shared/theme/tokens';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'ForgotPassword'>;
 
