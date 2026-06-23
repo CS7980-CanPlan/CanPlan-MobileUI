@@ -175,6 +175,15 @@ export interface CreateMyUserProfileInput {
   accessibilitySettings?: JsonValue;
 }
 
+export interface UpdateMyUserProfileInput {
+  displayName?: string;
+  /**
+   * Full replacement of the stored settings (not deep-merged by the API).
+   * `null` clears the field; omitted leaves it unchanged.
+   */
+  accessibilitySettings?: JsonValue | null;
+}
+
 export interface CreateSupportLinkInput {
   supporterId: string;
   primaryUserId: string;

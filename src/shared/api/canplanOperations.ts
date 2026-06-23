@@ -161,6 +161,12 @@ export const CREATE_USER_PROFILE = /* GraphQL */ `
   }
 `;
 
+export const UPDATE_MY_USER_PROFILE = /* GraphQL */ `
+  mutation UpdateMyUserProfile($input: UpdateMyUserProfileInput!) {
+    updateMyUserProfile(input: $input) { ${USER_PROFILE_FIELDS} }
+  }
+`;
+
 export const CREATE_SUPPORT_LINK = /* GraphQL */ `
   mutation CreateSupportLink($input: CreateSupportLinkInput!) {
     createSupportLink(input: $input) { ${SUPPORT_LINK_FIELDS} }
