@@ -281,10 +281,10 @@ export default function App() {
           {screen==="signup-info" && <SignUpInfoScreen onDone={handleLogin}/>}
           {screen==="forgot-password" && <ForgotPasswordScreen onBack={()=>setScreen("login")}/>}
           {screen==="home" && <HomeScreen onAllTasks={()=>setScreen("all-tasks")} onCategories={()=>setScreen("categories")} onCalendar={()=>setScreen("calendar")} onSignOut={()=>setScreen("login")} onSettings={()=>setScreen("settings")}/>}
-          {screen==="all-tasks" && <AllTasksScreen tasks={tasks} categories={categories} onBack={()=>setScreen(appSettings.simpleMode?simpleStartScreen:"home")} onOpen={id=>openTask(id,"all-tasks")} onAdd={()=>goToCreate("all-tasks")} onEdit={id=>goToCreate("all-tasks",undefined,id)} onDelete={deleteTask} onReorder={setTasks} onSettings={()=>setScreen("settings")} simpleMode={appSettings.simpleMode}/>}
-          {screen==="categories" && <CategoriesScreen tasks={tasks} categories={categories} onBack={()=>setScreen("home")} onSelect={id=>{setActiveCategory(id);setScreen("category-detail");}} onAdd={addCategory} onEdit={updateCategory} onDelete={deleteCategory}/>}
-          {screen==="category-detail" && activeCategory && <CategoryDetailScreen tasks={tasks} categories={categories} categoryId={activeCategory} onBack={()=>setScreen("categories")} onOpen={id=>openTask(id,"category-detail")} onAddTask={()=>goToCreate("category-detail",activeCategory)} onEditTask={id=>goToCreate("category-detail",activeCategory,id)} onDeleteTask={deleteTask} onReorderTasks={orderedIds=>{setTasks(prev=>{const positions=prev.reduce((acc,t,i)=>{if(orderedIds.includes(t.id))acc.push(i);return acc;},[]);const ordered=orderedIds.map(id=>prev.find(t=>t.id===id)!);const result=[...prev];positions.forEach((pos,i)=>{result[pos]=ordered[i];});return result;});}}/>}
-          {screen==="calendar" && <CalendarScreen tasks={tasks} categories={categories} onBack={()=>setScreen("home")} onOpen={id=>openTask(id,"calendar")}/>}
+          {screen==="all-tasks" && <AllTasksScreen tasks={tasks} categories={categories} onBack={()=>setScreen(appSettings.simpleMode?simpleStartScreen:"home")} onOpen={id=>openTask(id,"all-tasks")} onAdd={()=>goToCreate("all-tasks")} onEdit={id=>goToCreate("all-tasks",undefined,id)} onDelete={deleteTask} onReorder={setTasks} onSettings={()=>setScreen("settings")} simpleMode={appSettings.simpleMode} isHome={appSettings.simpleMode&&appSettings.startingPage==="all-tasks"}/>}
+          {screen==="categories" && <CategoriesScreen tasks={tasks} categories={categories} onBack={()=>setScreen(appSettings.simpleMode?simpleStartScreen:"home")} onSelect={id=>{setActiveCategory(id);setScreen("category-detail");}} onAdd={addCategory} onEdit={updateCategory} onDelete={deleteCategory} simpleMode={appSettings.simpleMode} isHome={appSettings.simpleMode&&appSettings.startingPage==="categories"} onSettings={()=>setScreen("settings")}/>}
+          {screen==="category-detail" && activeCategory && <CategoryDetailScreen tasks={tasks} categories={categories} categoryId={activeCategory} onBack={()=>setScreen("categories")} onOpen={id=>openTask(id,"category-detail")} onAddTask={()=>goToCreate("category-detail",activeCategory)} onEditTask={id=>goToCreate("category-detail",activeCategory,id)} onDeleteTask={deleteTask} simpleMode={appSettings.simpleMode} onReorderTasks={orderedIds=>{setTasks(prev=>{const positions=prev.reduce((acc,t,i)=>{if(orderedIds.includes(t.id))acc.push(i);return acc;},[]);const ordered=orderedIds.map(id=>prev.find(t=>t.id===id)!);const result=[...prev];positions.forEach((pos,i)=>{result[pos]=ordered[i];});return result;});}}/>}
+          {screen==="calendar" && <CalendarScreen tasks={tasks} categories={categories} onBack={()=>setScreen(appSettings.simpleMode?simpleStartScreen:"home")} onOpen={id=>openTask(id,"calendar")} onAddTask={()=>goToCreate("calendar")} simpleMode={appSettings.simpleMode} isHome={appSettings.simpleMode&&appSettings.startingPage==="calendar"} onSettings={()=>setScreen("settings")}/>}
           {screen==="settings" && <SettingsScreen settings={appSettings} onUpdate={s=>setAppSettings(s)} onBack={()=>setScreen(appSettings.simpleMode?simpleStartScreen:"home")}/>}
           {screen==="create" && <CreateScreen categories={categories} defaultCategory={createDefaultCategory} initialTask={editingTask??undefined} onBack={()=>{setEditingTaskId(null);setScreen(createSource);}} onSave={saveTask}/>}
           {screen==="task-detail" && activeTask && <TaskDetail task={activeTask} categories={categories} onBack={()=>setScreen(taskDetailSource)} onStepTap={stepId=>openStep(activeTask.id,stepId)} onToggle={stepId=>toggleStep(activeTask.id,stepId)}/>}
@@ -354,8 +354,8 @@ function HomeScreen({ onAllTasks, onCategories, onCalendar, onSignOut, onSetting
 
 // ── All Tasks ─────────────────────────────────────────────────────────
 
-function AllTasksScreen({ tasks, categories, onBack, onOpen, onAdd, onEdit, onDelete, onReorder, onSettings, simpleMode }: {
-  tasks:Task[]; categories:Category[]; onBack:()=>void; onOpen:(id:number)=>void; onAdd:()=>void; onEdit:(id:number)=>void; onDelete:(id:number)=>void; onReorder:(t:Task[])=>void; onSettings:()=>void; simpleMode:boolean;
+function AllTasksScreen({ tasks, categories, onBack, onOpen, onAdd, onEdit, onDelete, onReorder, onSettings, simpleMode, isHome }: {
+  tasks:Task[]; categories:Category[]; onBack:()=>void; onOpen:(id:number)=>void; onAdd:()=>void; onEdit:(id:number)=>void; onDelete:(id:number)=>void; onReorder:(t:Task[])=>void; onSettings:()=>void; simpleMode:boolean; isHome:boolean;
 }) {
   const [reordering, setReordering] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number|null>(null);
@@ -364,9 +364,9 @@ function AllTasksScreen({ tasks, categories, onBack, onOpen, onAdd, onEdit, onDe
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
       <div className="flex-shrink-0 flex items-center gap-2 px-5 pt-4 pb-3 bg-[#FEF7EE]">
-        {!simpleMode&&<button onClick={onBack} className="w-12 h-12 rounded-2xl bg-white border border-black/[0.08] flex items-center justify-center shadow-sm flex-shrink-0"><ArrowLeft size={22} className="text-[#1C1A2E]"/></button>}
+        {!isHome&&<button onClick={onBack} className="w-12 h-12 rounded-2xl bg-white border border-black/[0.08] flex items-center justify-center shadow-sm flex-shrink-0"><ArrowLeft size={22} className="text-[#1C1A2E]"/></button>}
         <h1 className="text-2xl font-black text-[#1C1A2E] flex-1 min-w-0" style={{ fontFamily:"Nunito, sans-serif" }}>All Tasks</h1>
-        {tasks.length>1&&(
+        {!simpleMode&&tasks.length>1&&(
           <button onClick={()=>{setReordering(r=>!r);setConfirmDeleteId(null);}} className="px-3 h-10 rounded-2xl font-bold text-sm transition-all flex-shrink-0"
             style={{ background:reordering?"#E8623A":"#F5EDE0", color:reordering?"white":"#7A6F6A", fontFamily:"Nunito, sans-serif" }}>
             {reordering?"Done":"Reorder"}
@@ -433,16 +433,18 @@ function AllTasksScreen({ tasks, categories, onBack, onOpen, onAdd, onEdit, onDe
                       </div>
                     </div>
                   </button>
-                  <div className="flex border-t border-[#F5EDE0]">
-                    <button onClick={()=>onEdit(task.id)} className="flex-1 py-3 text-sm font-black text-[#E8623A] active:bg-[#FEF0EB] transition-colors border-r border-[#F5EDE0]" style={{ fontFamily:"Nunito, sans-serif" }}>Edit Task</button>
-                    <button onClick={()=>setConfirmDeleteId(task.id)} className="flex-1 py-3 text-sm font-black text-[#D4183D] active:bg-[#FEE8E8] transition-colors" style={{ fontFamily:"Nunito, sans-serif" }}>Delete Task</button>
-                  </div>
+                  {!simpleMode&&(
+                    <div className="flex border-t border-[#F5EDE0]">
+                      <button onClick={()=>onEdit(task.id)} className="flex-1 py-3 text-sm font-black text-[#E8623A] active:bg-[#FEF0EB] transition-colors border-r border-[#F5EDE0]" style={{ fontFamily:"Nunito, sans-serif" }}>Edit Task</button>
+                      <button onClick={()=>setConfirmDeleteId(task.id)} className="flex-1 py-3 text-sm font-black text-[#D4183D] active:bg-[#FEE8E8] transition-colors" style={{ fontFamily:"Nunito, sans-serif" }}>Delete Task</button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
           );
         })}
-        {!reordering&&(
+        {!reordering&&!simpleMode&&(
           <button onClick={onAdd} className="w-full py-5 rounded-[1.75rem] border-2 border-dashed border-[#E8623A]/40 flex items-center justify-center gap-3 text-[#E8623A] font-black text-lg hover:border-[#E8623A]/70 hover:bg-[#E8623A]/5 transition-all active:scale-[0.98]" style={{ fontFamily:"Nunito, sans-serif" }}>
             <Plus size={22} strokeWidth={3}/> Add a task
           </button>
@@ -460,16 +462,17 @@ function AllTasksScreen({ tasks, categories, onBack, onOpen, onAdd, onEdit, onDe
 
 // ── Categories ────────────────────────────────────────────────────────
 
-function CategoriesScreen({ tasks, categories, onBack, onSelect, onAdd, onEdit, onDelete }: {
+function CategoriesScreen({ tasks, categories, onBack, onSelect, onAdd, onEdit, onDelete, onSettings, simpleMode, isHome }: {
   tasks:Task[]; categories:Category[]; onBack:()=>void; onSelect:(id:string)=>void;
   onAdd:(label:string,color:string)=>void; onEdit:(id:string,label:string,color:string)=>void; onDelete:(id:string)=>void;
+  onSettings:()=>void; simpleMode:boolean; isHome:boolean;
 }) {
   const [addOpen,setAddOpen]=useState(false);
   const [editCat,setEditCat]=useState<Category|null>(null);
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden relative">
       <div className="flex-shrink-0 flex items-center gap-3 px-5 pt-4 pb-3">
-        <button onClick={onBack} className="w-12 h-12 rounded-2xl bg-white border border-black/[0.08] flex items-center justify-center shadow-sm"><ArrowLeft size={22} className="text-[#1C1A2E]"/></button>
+        {!isHome&&<button onClick={onBack} className="w-12 h-12 rounded-2xl bg-white border border-black/[0.08] flex items-center justify-center shadow-sm"><ArrowLeft size={22} className="text-[#1C1A2E]"/></button>}
         <h1 className="text-2xl font-black text-[#1C1A2E] flex-1" style={{ fontFamily:"Nunito, sans-serif" }}>Categories</h1>
       </div>
       <div className="flex-1 overflow-y-auto pb-6">
@@ -488,7 +491,7 @@ function CategoriesScreen({ tasks, categories, onBack, onSelect, onAdd, onEdit, 
                     </div>
                     <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M7 5l4 4-4 4" stroke="#C9BDB5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
-                  <button onClick={()=>setEditCat(cat)} className="flex-shrink-0 px-4 py-4 text-sm font-black text-[#E8623A] border-l border-[#F5EDE0] active:bg-[#FEF0EB] transition-colors" style={{ fontFamily:"Nunito, sans-serif" }}>Edit</button>
+                  {!simpleMode&&<button onClick={()=>setEditCat(cat)} className="flex-shrink-0 px-4 py-4 text-sm font-black text-[#E8623A] border-l border-[#F5EDE0] active:bg-[#FEF0EB] transition-colors" style={{ fontFamily:"Nunito, sans-serif" }}>Edit</button>}
                 </div>
               </div>
             );
@@ -506,14 +509,22 @@ function CategoriesScreen({ tasks, categories, onBack, onSelect, onAdd, onEdit, 
             </button>
           </div>
         ):null;})()}
-        <div className="px-5 mt-4">
-          <button onClick={()=>setAddOpen(true)} className="w-full py-5 rounded-[1.75rem] border-2 border-dashed border-[#E8623A]/40 flex items-center justify-center gap-3 text-[#E8623A] font-black text-lg hover:border-[#E8623A]/70 hover:bg-[#E8623A]/5 transition-all active:scale-[0.98]" style={{ fontFamily:"Nunito, sans-serif" }}>
-            <Plus size={22} strokeWidth={3}/> Add Category
-          </button>
-        </div>
+        {!simpleMode&&(
+          <div className="px-5 mt-4">
+            <button onClick={()=>setAddOpen(true)} className="w-full py-5 rounded-[1.75rem] border-2 border-dashed border-[#E8623A]/40 flex items-center justify-center gap-3 text-[#E8623A] font-black text-lg hover:border-[#E8623A]/70 hover:bg-[#E8623A]/5 transition-all active:scale-[0.98]" style={{ fontFamily:"Nunito, sans-serif" }}>
+              <Plus size={22} strokeWidth={3}/> Add Category
+            </button>
+          </div>
+        )}
       </div>
       {addOpen&&<CategoryFormSheet title="Add Category" onClose={()=>setAddOpen(false)} onSave={(l,c)=>{onAdd(l,c);setAddOpen(false);}}/>}
-      {editCat&&<CategoryFormSheet title="Edit Category" initial={editCat} onClose={()=>setEditCat(null)} onSave={(l,c)=>{onEdit(editCat.id,l,c);setEditCat(null);}} onDelete={()=>{onDelete(editCat.id);setEditCat(null);}}/>}
+      {!simpleMode&&editCat&&<CategoryFormSheet title="Edit Category" initial={editCat} onClose={()=>setEditCat(null)} onSave={(l,c)=>{onEdit(editCat.id,l,c);setEditCat(null);}} onDelete={()=>{onDelete(editCat.id);setEditCat(null);}}/>}
+      {isHome&&(
+        <button onClick={onSettings} className="absolute w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all"
+          style={{ bottom:20, right:20, background:"#1C1A2E" }}>
+          <Settings size={20} className="text-white"/>
+        </button>
+      )}
     </div>
   );
 }
@@ -570,9 +581,9 @@ function CategoryFormSheet({ title, initial, onClose, onSave, onDelete }: {
 
 // ── Category Detail ───────────────────────────────────────────────────
 
-function CategoryDetailScreen({ tasks, categories, categoryId, onBack, onOpen, onAddTask, onEditTask, onDeleteTask, onReorderTasks }: {
+function CategoryDetailScreen({ tasks, categories, categoryId, onBack, onOpen, onAddTask, onEditTask, onDeleteTask, onReorderTasks, simpleMode }: {
   tasks:Task[]; categories:Category[]; categoryId:string; onBack:()=>void; onOpen:(id:number)=>void;
-  onAddTask:()=>void; onEditTask:(id:number)=>void; onDeleteTask:(id:number)=>void; onReorderTasks:(orderedIds:number[])=>void;
+  onAddTask:()=>void; onEditTask:(id:number)=>void; onDeleteTask:(id:number)=>void; onReorderTasks:(orderedIds:number[])=>void; simpleMode:boolean;
 }) {
   const cat=categories.find(c=>c.id===categoryId);
   const filtered=categoryId==="__none__"?tasks.filter(t=>!t.category):tasks.filter(t=>t.category===categoryId);
@@ -618,18 +629,22 @@ function CategoryDetailScreen({ tasks, categories, categoryId, onBack, onOpen, o
                       {total>0&&<div className="mt-2 h-2 bg-[#F5EDE0] rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width:`${(done/total)*100}%`, background:allDone?"#3DB8AD":"#E8623A" }}/></div>}
                     </div>
                   </button>
-                  <div className="flex border-t border-[#F5EDE0]">
-                    <button onClick={()=>onEditTask(task.id)} className="flex-1 py-3 text-sm font-black text-[#E8623A] active:bg-[#FEF0EB] transition-colors border-r border-[#F5EDE0]" style={{ fontFamily:"Nunito, sans-serif" }}>Edit Task</button>
-                    <button onClick={()=>setConfirmDeleteId(task.id)} className="flex-1 py-3 text-sm font-black text-[#D4183D] active:bg-[#FEE8E8] transition-colors" style={{ fontFamily:"Nunito, sans-serif" }}>Delete Task</button>
-                  </div>
+                  {!simpleMode&&(
+                    <div className="flex border-t border-[#F5EDE0]">
+                      <button onClick={()=>onEditTask(task.id)} className="flex-1 py-3 text-sm font-black text-[#E8623A] active:bg-[#FEF0EB] transition-colors border-r border-[#F5EDE0]" style={{ fontFamily:"Nunito, sans-serif" }}>Edit Task</button>
+                      <button onClick={()=>setConfirmDeleteId(task.id)} className="flex-1 py-3 text-sm font-black text-[#D4183D] active:bg-[#FEE8E8] transition-colors" style={{ fontFamily:"Nunito, sans-serif" }}>Delete Task</button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
           );
         })}
-        <button onClick={onAddTask} className="w-full py-5 rounded-[1.75rem] border-2 border-dashed border-[#E8623A]/40 flex items-center justify-center gap-3 text-[#E8623A] font-black text-lg hover:border-[#E8623A]/70 hover:bg-[#E8623A]/5 transition-all active:scale-[0.98]" style={{ fontFamily:"Nunito, sans-serif" }}>
-          <Plus size={22} strokeWidth={3}/> Add Task
-        </button>
+        {!simpleMode&&(
+          <button onClick={onAddTask} className="w-full py-5 rounded-[1.75rem] border-2 border-dashed border-[#E8623A]/40 flex items-center justify-center gap-3 text-[#E8623A] font-black text-lg hover:border-[#E8623A]/70 hover:bg-[#E8623A]/5 transition-all active:scale-[0.98]" style={{ fontFamily:"Nunito, sans-serif" }}>
+            <Plus size={22} strokeWidth={3}/> Add Task
+          </button>
+        )}
       </div>
     </div>
   );
@@ -639,8 +654,8 @@ function CategoryDetailScreen({ tasks, categories, categoryId, onBack, onOpen, o
 
 type CalTab = "todo"|"overdue"|"done"|"skipped";
 
-function CalendarScreen({ tasks, categories, onBack, onOpen }: {
-  tasks:Task[]; categories:Category[]; onBack:()=>void; onOpen:(id:number)=>void;
+function CalendarScreen({ tasks, categories, onBack, onOpen, onAddTask, onSettings, simpleMode, isHome }: {
+  tasks:Task[]; categories:Category[]; onBack:()=>void; onOpen:(id:number)=>void; onAddTask:()=>void; onSettings:()=>void; simpleMode:boolean; isHome:boolean;
 }) {
   const today=new Date();
   const [viewYear,setViewYear]=useState(today.getFullYear());
@@ -704,8 +719,13 @@ function CalendarScreen({ tasks, categories, onBack, onOpen }: {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex-shrink-0 flex items-center gap-3 px-5 pt-4 pb-3">
-        <button onClick={onBack} className="w-12 h-12 rounded-2xl bg-white border border-black/[0.08] flex items-center justify-center shadow-sm"><ArrowLeft size={22} className="text-[#1C1A2E]"/></button>
+        {!isHome&&<button onClick={onBack} className="w-12 h-12 rounded-2xl bg-white border border-black/[0.08] flex items-center justify-center shadow-sm flex-shrink-0"><ArrowLeft size={22} className="text-[#1C1A2E]"/></button>}
         <h1 className="text-2xl font-black text-[#1C1A2E] flex-1" style={{ fontFamily:"Nunito, sans-serif" }}>Calendar</h1>
+        {!simpleMode&&(
+          <button onClick={onAddTask} className="w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm flex-shrink-0 active:scale-90 transition-all" style={{ background:"linear-gradient(135deg,#E8623A,#F07B3A)" }}>
+            <Plus size={22} className="text-white" strokeWidth={3}/>
+          </button>
+        )}
       </div>
       <div className="flex-shrink-0 flex items-center justify-between px-5 pb-2">
         <button onClick={prevMonth} className="w-10 h-10 rounded-2xl bg-[#F5EDE0] flex items-center justify-center"><ChevronLeft size={20} style={{ color:"#E8623A" }}/></button>
@@ -776,6 +796,12 @@ function CalendarScreen({ tasks, categories, onBack, onOpen }: {
           </div>
         )}
       </div>
+      {isHome&&(
+        <button onClick={onSettings} className="absolute w-11 h-11 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all"
+          style={{ bottom:20, right:20, background:"#1C1A2E" }}>
+          <Settings size={20} className="text-white"/>
+        </button>
+      )}
     </div>
   );
 }
