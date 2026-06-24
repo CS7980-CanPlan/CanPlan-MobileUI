@@ -611,7 +611,14 @@ export default function CreateTaskScreen() {
     } else {
       navigation.navigate('Home');
     }
-  }, [exitDestination, isBusy, navigation, shouldConfirmDraftDiscard]);
+  }, [
+    exitDestination,
+    fixedCategoryId,
+    fixedCategoryName,
+    isBusy,
+    navigation,
+    shouldConfirmDraftDiscard,
+  ]);
 
   const uploadCoverImage = async (id: string, image: SelectedImage) => {
     const contentType = contentTypeForImage(image);
@@ -778,7 +785,9 @@ export default function CreateTaskScreen() {
         setCoverNeedsUpload(false);
       }
       setIsCreatedTaskDraft(false);
-      setExitDestination('all-tasks');
+      // New task → land on AllTasks; editing an existing task → go back to
+      // wherever the user came from (TaskDetail, TaskView, etc.).
+      setExitDestination(existingTaskId ? 'back' : 'all-tasks');
     } catch (error) {
       setInlineError(errorMessage(error));
     } finally {

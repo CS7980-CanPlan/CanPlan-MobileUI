@@ -3,6 +3,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -44,7 +45,7 @@ export default function SettingsScreen() {
   const savedSimpleMode = savedSettings.simpleMode === true;
 
   const [simpleMode, setSimpleMode] = useState(savedSimpleMode);
-  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmCancelVisible, setConfirmCancelVisible] = useState(false);
 
   // Sync local state if the profile loads/changes while we're not editing.
   const isDirty = simpleMode !== savedSimpleMode;
@@ -56,9 +57,6 @@ export default function SettingsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedSimpleMode]);
 
-  // Tracks a back navigation we let through after confirming/discarding so the
-  // beforeRemove listener doesn't re-intercept it.
-  const allowLeaveRef = useRef(false);
   // Simple Mode as it was when this screen opened — used to detect whether the
   // user toggled it during this visit, so we can swap to the right root screen.
   const initialSimpleModeRef = useRef<boolean | null>(null);
@@ -68,15 +66,15 @@ export default function SettingsScreen() {
     }
   }, [isLoading, savedSimpleMode]);
 
-  // Intercept every way of leaving (back button, swipe, hardware back) when
-  // there are unsaved changes, and ask the user what to do.
+  // Intercept every way of leaving (swipe, hardware back) when there are
+  // unsaved changes, and treat it like tapping Cancel.
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (event) => {
-      if (!isDirty || allowLeaveRef.current) {
+      if (!isDirty) {
         return;
       }
       event.preventDefault();
-      setConfirmVisible(true);
+      setConfirmCancelVisible(true);
     });
     return unsubscribe;
   }, [navigation, isDirty]);
@@ -86,7 +84,6 @@ export default function SettingsScreen() {
   // just go back to wherever we came from, preserving history.
   const leave = useCallback(
     (effectiveSimpleMode: boolean) => {
-      allowLeaveRef.current = true;
       const initial = initialSimpleModeRef.current ?? effectiveSimpleMode;
       if (effectiveSimpleMode !== initial) {
         navigation.reset({
@@ -100,27 +97,59 @@ export default function SettingsScreen() {
     [navigation],
   );
 
-  const handleSave = useCallback(() => {
-    setConfirmVisible(false);
+  const handleDone = useCallback(() => {
     updateProfile.mutate(
       { accessibilitySettings: { ...savedSettings, simpleMode } },
       { onSuccess: () => leave(simpleMode) },
     );
   }, [updateProfile, savedSettings, simpleMode, leave]);
 
-  const handleDiscard = useCallback(() => {
-    setConfirmVisible(false);
+  const handleCancelPress = useCallback(() => {
+    if (updateProfile.isPending) {
+      return;
+    }
+    if (isDirty) {
+      setConfirmCancelVisible(true);
+      return;
+    }
+    leave(savedSimpleMode);
+  }, [isDirty, leave, savedSimpleMode, updateProfile.isPending]);
+
+  const handleDiscardChanges = useCallback(() => {
+    setConfirmCancelVisible(false);
     setSimpleMode(savedSimpleMode);
     leave(savedSimpleMode);
   }, [savedSimpleMode, leave]);
 
+  const handleKeepEditing = useCallback(() => {
+    setConfirmCancelVisible(false);
+  }, []);
+
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <BackButton onPress={() => navigation.goBack()} variant="dark" />
+        <BackButton onPress={handleCancelPress} variant="dark" />
         <Text accessibilityRole="header" style={styles.headerTitle}>
           Settings
         </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Done"
+          accessibilityState={{ disabled: updateProfile.isPending, busy: updateProfile.isPending }}
+          disabled={updateProfile.isPending}
+          onPress={handleDone}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.headerAction,
+            pressed && !updateProfile.isPending ? styles.pressed : null,
+          ]}
+        >
+          {updateProfile.isPending ? (
+            <ActivityIndicator color={colors.primary} size="small" />
+          ) : (
+            <Text style={[styles.headerActionText, styles.headerActionPrimary]}>Done</Text>
+          )}
+        </Pressable>
       </View>
 
       {isLoading ? (
@@ -160,13 +189,13 @@ export default function SettingsScreen() {
       )}
 
       <ConfirmDialog
-        visible={confirmVisible}
-        title="Save changes?"
-        message="You changed your settings. Would you like to apply the changes?"
-        confirmLabel="Save changes"
-        cancelLabel="Discard"
-        onConfirm={handleSave}
-        onCancel={handleDiscard}
+        visible={confirmCancelVisible}
+        title="Cancel changes?"
+        message="You changed your settings. Do you want to cancel these changes?"
+        confirmLabel="Cancel Changes"
+        cancelLabel="Keep Editing"
+        onConfirm={handleDiscardChanges}
+        onCancel={handleKeepEditing}
       />
     </View>
   );
@@ -180,9 +209,21 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.lg,
+  },
+  headerAction: {
+    minWidth: 68,
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  headerActionText: {
+    ...typography.bodyStrong,
+    color: colors.text,
+  },
+  headerActionPrimary: {
+    color: colors.primary,
+    textAlign: 'right',
   },
   headerTitle: {
     flex: 1,
@@ -228,5 +269,8 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.danger,
     marginTop: spacing.sm,
+  },
+  pressed: {
+    opacity: 0.6,
   },
 });

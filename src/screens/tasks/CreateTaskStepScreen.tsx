@@ -95,8 +95,18 @@ export default function CreateTaskStepScreen() {
     () => stepsQuery.data?.pages.flatMap((p) => p.items).find((s) => s.stepId === stepId),
     [stepId, stepsQuery.data],
   );
-  const existingAsset = currentStep?.mediaAssets[0];
-  const existingMediaQuery = useMediaDownloadUrl(taskId, existingAsset?.assetId ?? '');
+  // A step holds up to one visual asset (IMAGE or VIDEO — mutually exclusive) and
+  // one AUDIO asset; the schema allows all three but UI rules out IMAGE+VIDEO.
+  const existingVisualAsset = useMemo(
+    () => currentStep?.mediaAssets.find((a) => a.type === 'IMAGE' || a.type === 'VIDEO'),
+    [currentStep],
+  );
+  const existingAudioAsset = useMemo(
+    () => currentStep?.mediaAssets.find((a) => a.type === 'AUDIO'),
+    [currentStep],
+  );
+  const existingVisualQuery = useMediaDownloadUrl(taskId, existingVisualAsset?.assetId ?? '');
+  const existingAudioQuery = useMediaDownloadUrl(taskId, existingAudioAsset?.assetId ?? '');
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -106,10 +116,14 @@ export default function CreateTaskStepScreen() {
   const [busyAction, setBusyAction] = useState<string>();
   const [inlineError, setInlineError] = useState<string>();
 
-  // Newly selected/recorded media (not yet uploaded) and existing-media removal flag.
-  const [pendingMedia, setPendingMedia] = useState<SelectedMedia>();
-  const [removeExistingMedia, setRemoveExistingMedia] = useState(false);
-  const [deleteMediaVisible, setDeleteMediaVisible] = useState(false);
+  // Newly selected/recorded media (not yet uploaded) per slot, plus per-slot
+  // existing-media removal flags. Visual and audio slots are independent.
+  const [pendingVisual, setPendingVisual] = useState<SelectedMedia>();
+  const [pendingAudio, setPendingAudio] = useState<SelectedMedia>();
+  const [removeExistingVisual, setRemoveExistingVisual] = useState(false);
+  const [removeExistingAudio, setRemoveExistingAudio] = useState(false);
+  const [deleteVisualVisible, setDeleteVisualVisible] = useState(false);
+  const [deleteAudioVisible, setDeleteAudioVisible] = useState(false);
   const [descEditorVisible, setDescEditorVisible] = useState(false);
 
   // Audio recording (expo-audio).
@@ -131,22 +145,23 @@ export default function CreateTaskStepScreen() {
   const isLoadingStep = isEditing && stepsQuery.isLoading;
   const trimmedTitle = title.trim();
 
-  // What is currently previewed: a fresh pick/recording, else the existing upload.
-  const existingMediaUrl = removeExistingMedia ? undefined : existingMediaQuery.data?.downloadUrl;
-  const existingMediaType: MediaType | undefined = removeExistingMedia ? undefined : existingAsset?.type;
-  const previewUri = pendingMedia?.uri ?? existingMediaUrl;
-  const previewType: MediaType | undefined = pendingMedia?.mediaType ?? existingMediaType;
-  const isPendingPreview = Boolean(pendingMedia);
+  // Per-slot preview: a fresh pick/recording wins, else fall back to the existing upload.
+  const existingVisualUrl = removeExistingVisual ? undefined : existingVisualQuery.data?.downloadUrl;
+  const existingVisualType: MediaType | undefined = removeExistingVisual ? undefined : existingVisualAsset?.type;
+  const existingAudioUrl = removeExistingAudio ? undefined : existingAudioQuery.data?.downloadUrl;
+  const visualUri = pendingVisual?.uri ?? existingVisualUrl;
+  const visualType: MediaType | undefined = pendingVisual?.mediaType ?? existingVisualType;
+  const audioUri = pendingAudio?.uri ?? existingAudioUrl;
 
-  const photoSelected = previewType === 'IMAGE' || previewType === 'VIDEO';
-  const audioSelected = previewType === 'AUDIO';
+  const photoSelected = Boolean(visualUri);
+  const audioSelected = Boolean(audioUri);
 
   // Preview players (expo-video / expo-audio). Each hook re-creates its player
   // when the gated source string changes, so feeding the current preview URI is enough.
-  const videoPlayer = useVideoPlayer(previewType === 'VIDEO' ? previewUri ?? null : null, (player) => {
+  const videoPlayer = useVideoPlayer(visualType === 'VIDEO' ? visualUri ?? null : null, (player) => {
     player.loop = false;
   });
-  const audioPlayer = useAudioPlayer(previewType === 'AUDIO' ? previewUri ?? null : null);
+  const audioPlayer = useAudioPlayer(audioUri ?? null);
   const audioStatus = useAudioPlayerStatus(audioPlayer);
 
   useEffect(() => {
@@ -251,13 +266,15 @@ export default function CreateTaskStepScreen() {
         const asset = result.assets[0];
         const mimeType = contentTypeForAsset(asset);
         const isVideo = mimeType.startsWith('video/');
-        setPendingMedia({
+        setPendingVisual({
           uri: asset.uri,
           mediaType: isVideo ? 'VIDEO' : 'IMAGE',
           mimeType,
           size: asset.fileSize,
         });
-        setRemoveExistingMedia(false);
+        // A fresh pick always replaces the visual slot — clear any pending
+        // removal of the existing one so the new pick wins.
+        setRemoveExistingVisual(false);
       }
     } catch (error) {
       setInlineError(errorMessage(error));
@@ -277,10 +294,9 @@ export default function CreateTaskStepScreen() {
 
   const handlePhotoTilePress = () => {
     if (isBusy || isRecording) return;
-    if (photoSelected) {
-      setDeleteMediaVisible(true);
-      return;
-    }
+    // Tapping the tile always opens the source picker — picking a new
+    // photo/video replaces whichever visual is currently in the slot
+    // (IMAGE↔VIDEO swap is allowed; image+video is not).
     showPhotoSourceOptions();
   };
 
@@ -310,8 +326,8 @@ export default function CreateTaskStepScreen() {
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
       const uri = audioRecorder.uri;
       if (uri) {
-        setPendingMedia({ uri, mediaType: 'AUDIO', mimeType: 'audio/m4a' });
-        setRemoveExistingMedia(false);
+        setPendingAudio({ uri, mediaType: 'AUDIO', mimeType: 'audio/m4a' });
+        setRemoveExistingAudio(false);
       }
     } catch (error) {
       setInlineError(errorMessage(error));
@@ -324,8 +340,11 @@ export default function CreateTaskStepScreen() {
       return;
     }
     if (isBusy) return;
-    if (audioSelected) {
-      setDeleteMediaVisible(true);
+    // When an audio clip is present, the tile becomes a play/pause toggle.
+    // Re-recording requires removing the clip first (long-press the badge).
+    if (audioUri) {
+      if (audioStatus.playing) audioPlayer.pause();
+      else audioPlayer.play();
       return;
     }
     void startRecording();
@@ -334,7 +353,7 @@ export default function CreateTaskStepScreen() {
   // ── Audio playback (preview) ────────────────────────────────────────────────
 
   const toggleAudioPlayback = () => {
-    if (!previewUri) return;
+    if (!audioUri) return;
     if (audioStatus.playing) audioPlayer.pause();
     else audioPlayer.play();
   };
@@ -345,33 +364,70 @@ export default function CreateTaskStepScreen() {
 
   // ── Remove media (with confirmation + S3/DB delete for uploaded assets) ───────
 
-  const confirmRemoveMedia = async () => {
-    stopAudioPlayback();
-
-    // Fresh pick/recording that was never uploaded — just discard locally.
-    if (pendingMedia) {
-      setPendingMedia(undefined);
-      setDeleteMediaVisible(false);
+  const confirmRemoveVisual = async () => {
+    // Fresh pick that was never uploaded — just discard locally.
+    if (pendingVisual) {
+      setPendingVisual(undefined);
+      setDeleteVisualVisible(false);
       return;
     }
-
-    // Deleting a step asset also clears its media slot server-side.
-    if (currentStep && existingAsset) {
+    if (currentStep && existingVisualAsset) {
       setBusyAction('delete-media');
       setInlineError(undefined);
       try {
-        await deleteMediaAssetMutation.mutateAsync({ taskId, assetId: existingAsset.assetId });
-        setRemoveExistingMedia(true);
+        await deleteMediaAssetMutation.mutateAsync({
+          taskId,
+          assetId: existingVisualAsset.assetId,
+        });
+        setRemoveExistingVisual(true);
       } catch (error) {
         setInlineError(errorMessage(error));
       } finally {
         setBusyAction(undefined);
       }
     }
-    setDeleteMediaVisible(false);
+    setDeleteVisualVisible(false);
+  };
+
+  const confirmRemoveAudio = async () => {
+    stopAudioPlayback();
+    if (pendingAudio) {
+      setPendingAudio(undefined);
+      setDeleteAudioVisible(false);
+      return;
+    }
+    if (currentStep && existingAudioAsset) {
+      setBusyAction('delete-media');
+      setInlineError(undefined);
+      try {
+        await deleteMediaAssetMutation.mutateAsync({
+          taskId,
+          assetId: existingAudioAsset.assetId,
+        });
+        setRemoveExistingAudio(true);
+      } catch (error) {
+        setInlineError(errorMessage(error));
+      } finally {
+        setBusyAction(undefined);
+      }
+    }
+    setDeleteAudioVisible(false);
   };
 
   // ── Save ────────────────────────────────────────────────────────────────────
+
+  const buildMediaSlots = async () => {
+    const media: { type: MediaType; assetId: string }[] = [];
+    if (pendingVisual) {
+      const assetId = await uploadMedia(pendingVisual);
+      media.push({ type: pendingVisual.mediaType, assetId });
+    }
+    if (pendingAudio) {
+      const assetId = await uploadMedia(pendingAudio);
+      media.push({ type: 'AUDIO', assetId });
+    }
+    return media;
+  };
 
   const handleSave = async () => {
     if (!trimmedTitle || isBusy || isLoadingStep) return;
@@ -393,12 +449,12 @@ export default function CreateTaskStepScreen() {
         });
         if (!createdStep) throw new Error('Step creation failed. Please try again.');
 
-        if (pendingMedia) {
-          const mediaAssetId = await uploadMedia(pendingMedia);
+        const media = await buildMediaSlots();
+        if (media.length > 0) {
           await updateStepMutation.mutateAsync({
             taskId,
             stepId: createdStep.stepId,
-            media: [{ type: pendingMedia.mediaType, assetId: mediaAssetId }],
+            media,
           });
         }
         shouldGoBack = true;
@@ -409,21 +465,14 @@ export default function CreateTaskStepScreen() {
 
       const textChanged = trimmedTitle !== initialTitle;
       const descriptionChanged = trimmedDescription !== initialDescription.trim();
-      if (pendingMedia) {
-        const mediaAssetId = await uploadMedia(pendingMedia);
+      const media = await buildMediaSlots();
+      if (media.length > 0 || textChanged || descriptionChanged) {
         await updateStepMutation.mutateAsync({
           taskId,
           stepId: currentStep.stepId,
           ...(textChanged ? { text: trimmedTitle } : {}),
           ...(descriptionChanged ? { description: trimmedDescription || null } : {}),
-          media: [{ type: pendingMedia.mediaType, assetId: mediaAssetId }],
-        });
-      } else if (textChanged || descriptionChanged) {
-        await updateStepMutation.mutateAsync({
-          taskId,
-          stepId: currentStep.stepId,
-          ...(textChanged ? { text: trimmedTitle } : {}),
-          ...(descriptionChanged ? { description: trimmedDescription || null } : {}),
+          ...(media.length > 0 ? { media } : {}),
         });
       }
       shouldGoBack = true;
@@ -462,13 +511,14 @@ export default function CreateTaskStepScreen() {
 
   const canSave = Boolean(trimmedTitle) && !isBusy;
   const photoTileActive = photoSelected;
-  const audioTileActive = audioSelected || isRecording;
   const isPlayingAudio = audioStatus.playing;
   const audioDurationSec = audioStatus.duration || 0;
   const audioPositionSec = audioStatus.currentTime || 0;
   const audioProgress = audioDurationSec > 0 ? Math.min(audioPositionSec / audioDurationSec, 1) : 0;
   const audioTimeMs = (audioPositionSec > 0 ? audioPositionSec : audioDurationSec) * 1000;
-  const removingUploadedAsset = !pendingMedia && Boolean(existingAsset);
+  const removingUploadedVisual = !pendingVisual && Boolean(existingVisualAsset);
+  const removingUploadedAudio = !pendingAudio && Boolean(existingAudioAsset);
+  const isPendingAudio = Boolean(pendingAudio);
 
   return (
     <View style={styles.root}>
@@ -560,43 +610,80 @@ export default function CreateTaskStepScreen() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isRecording ? 'Stop recording' : audioTileActive ? 'Remove audio' : 'Record audio'}
-            accessibilityState={{ selected: audioTileActive }}
+            accessibilityLabel={
+              isRecording
+                ? 'Stop recording'
+                : audioUri
+                  ? isPlayingAudio
+                    ? 'Pause audio'
+                    : 'Play audio'
+                  : 'Record audio'
+            }
+            accessibilityState={{ selected: audioSelected || isRecording }}
             disabled={isBusy && !isRecording}
             onPress={handleAudioTilePress}
             style={({ pressed }) => [
               styles.mediaTile,
-              audioTileActive ? styles.mediaTileAudioActive : styles.mediaTileAudioIdle,
+              isRecording
+                ? styles.mediaTileAudioRecording
+                : isPlayingAudio
+                  ? styles.mediaTileAudioPlaying
+                  : audioUri
+                    ? styles.mediaTileAudioReady
+                    : styles.mediaTileAudioIdle,
               pressed ? styles.pressed : null,
             ]}
           >
             <Ionicons
-              name={isRecording ? 'stop-circle-outline' : 'mic-outline'}
+              name={
+                isRecording
+                  ? 'stop-circle-outline'
+                  : audioUri
+                    ? isPlayingAudio
+                      ? 'pause'
+                      : 'play'
+                    : 'mic-outline'
+              }
               size={36}
-              color={audioTileActive ? colors.onPrimary : TEAL}
+              color={isRecording || isPlayingAudio || audioUri ? colors.onPrimary : TEAL}
             />
-            <Text style={[styles.mediaTileLabel, audioTileActive ? styles.mediaTileLabelActive : styles.mediaTileLabelAudio]}>
-              {isRecording ? `Recording\n${formatDuration(recorderState.durationMillis)}` : 'Record\nAudio'}
+            <Text
+              style={[
+                styles.mediaTileLabel,
+                isRecording || isPlayingAudio || audioUri
+                  ? styles.mediaTileLabelActive
+                  : styles.mediaTileLabelAudio,
+              ]}
+            >
+              {isRecording
+                ? `Recording\n${formatDuration(recorderState.durationMillis)}`
+                : audioUri
+                  ? isPlayingAudio
+                    ? 'Pause\nAudio'
+                    : 'Play\nAudio'
+                  : 'Record\nAudio'}
             </Text>
             {isRecording ? (
               <View style={styles.selectedBadge}>
                 <Text style={styles.selectedBadgeText}>Tap to stop</Text>
               </View>
-            ) : audioTileActive ? (
+            ) : audioUri ? (
               <View style={styles.selectedBadge}>
                 <Ionicons name="checkmark" size={12} color={colors.onPrimary} />
-                <Text style={styles.selectedBadgeText}>Selected</Text>
+                <Text style={styles.selectedBadgeText}>
+                  {isPendingAudio ? 'New' : 'Saved'}
+                </Text>
               </View>
             ) : null}
           </Pressable>
         </View>
 
-        {/* ── Photo preview ── */}
-        {previewUri && previewType === 'IMAGE' ? (
+        {/* ── Visual preview (image or video). ── */}
+        {visualUri && visualType === 'IMAGE' ? (
           <View style={styles.mediaPreview}>
             <Image
               accessibilityLabel="Step photo preview"
-              source={{ uri: previewUri }}
+              source={{ uri: visualUri }}
               style={styles.previewMedia}
               resizeMode="cover"
             />
@@ -604,7 +691,7 @@ export default function CreateTaskStepScreen() {
               accessibilityRole="button"
               accessibilityLabel="Remove photo"
               disabled={isBusy}
-              onPress={() => setDeleteMediaVisible(true)}
+              onPress={() => setDeleteVisualVisible(true)}
               style={({ pressed }) => [styles.removeMediaBtn, pressed && !isBusy ? styles.pressed : null]}
             >
               <Ionicons name="close" size={16} color={colors.onPrimary} />
@@ -622,8 +709,7 @@ export default function CreateTaskStepScreen() {
           </View>
         ) : null}
 
-        {/* ── Video preview ── */}
-        {previewUri && previewType === 'VIDEO' ? (
+        {visualUri && visualType === 'VIDEO' ? (
           <View style={styles.mediaPreview}>
             <VideoView
               accessibilityLabel="Step video preview"
@@ -636,7 +722,7 @@ export default function CreateTaskStepScreen() {
               accessibilityRole="button"
               accessibilityLabel="Remove video"
               disabled={isBusy}
-              onPress={() => setDeleteMediaVisible(true)}
+              onPress={() => setDeleteVisualVisible(true)}
               style={({ pressed }) => [styles.removeMediaBtn, pressed && !isBusy ? styles.pressed : null]}
             >
               <Ionicons name="close" size={16} color={colors.onPrimary} />
@@ -654,13 +740,15 @@ export default function CreateTaskStepScreen() {
           </View>
         ) : null}
 
-        {/* ── Audio preview ── */}
-        {previewUri && previewType === 'AUDIO' ? (
+        {/* ── Audio chip (always shown when there is audio, coexists with visual). ── */}
+        {audioUri ? (
           <View style={styles.audioPreview}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={isPlayingAudio ? 'Pause audio' : 'Play audio'}
               onPress={toggleAudioPlayback}
+              onLongPress={() => setDeleteAudioVisible(true)}
+              delayLongPress={350}
               style={({ pressed }) => [styles.audioPlayBtn, pressed ? styles.pressed : null]}
             >
               <Ionicons
@@ -672,7 +760,7 @@ export default function CreateTaskStepScreen() {
             </Pressable>
             <View style={styles.audioPreviewInfo}>
               <Text style={styles.audioPreviewLabel}>
-                {isPendingPreview ? 'New recording' : 'Audio note'}
+                {isPendingAudio ? 'New recording' : 'Audio note'}
               </Text>
               <View style={styles.audioTrack}>
                 <View style={[styles.audioTrackFill, { width: `${audioProgress * 100}%` }]} />
@@ -685,7 +773,7 @@ export default function CreateTaskStepScreen() {
               accessibilityRole="button"
               accessibilityLabel="Discard audio"
               disabled={isBusy}
-              onPress={() => setDeleteMediaVisible(true)}
+              onPress={() => setDeleteAudioVisible(true)}
               style={({ pressed }) => [styles.audioDiscardBtn, pressed && !isBusy ? styles.pressed : null]}
             >
               <Ionicons name="trash-outline" size={18} color={colors.danger} />
@@ -737,19 +825,36 @@ export default function CreateTaskStepScreen() {
       </ScrollView>
 
       <ConfirmDialog
-        visible={deleteMediaVisible}
-        title={removingUploadedAsset ? 'Delete media?' : 'Discard media?'}
+        visible={deleteVisualVisible}
+        title={removingUploadedVisual ? 'Delete photo/video?' : 'Discard photo/video?'}
         message={
-          removingUploadedAsset
-            ? 'This will permanently delete the media from this step. This cannot be undone.'
-            : 'This will permanently delete the media you just added. This cannot be undone.'
+          removingUploadedVisual
+            ? 'This will permanently remove the photo or video from this step. This cannot be undone.'
+            : 'This will discard the photo or video you just added.'
         }
-        confirmLabel={isBusy ? 'Deleting…' : 'Delete media'}
-        cancelLabel="Keep media"
+        confirmLabel={isBusy ? 'Deleting…' : 'Delete'}
+        cancelLabel="Keep"
         destructive
-        onConfirm={() => void confirmRemoveMedia()}
+        onConfirm={() => void confirmRemoveVisual()}
         onCancel={() => {
-          if (!isBusy) setDeleteMediaVisible(false);
+          if (!isBusy) setDeleteVisualVisible(false);
+        }}
+      />
+
+      <ConfirmDialog
+        visible={deleteAudioVisible}
+        title={removingUploadedAudio ? 'Delete audio?' : 'Discard audio?'}
+        message={
+          removingUploadedAudio
+            ? 'This will permanently remove the audio from this step. This cannot be undone.'
+            : 'This will discard the audio you just recorded.'
+        }
+        confirmLabel={isBusy ? 'Deleting…' : 'Delete'}
+        cancelLabel="Keep"
+        destructive
+        onConfirm={() => void confirmRemoveAudio()}
+        onCancel={() => {
+          if (!isBusy) setDeleteAudioVisible(false);
         }}
       />
 
@@ -924,9 +1029,21 @@ const styles = StyleSheet.create({
   mediaTileAudioIdle: {
     backgroundColor: TEAL_LIGHT,
   },
-  mediaTileAudioActive: {
+  // Audio recorded, paused — saturated teal.
+  mediaTileAudioReady: {
     backgroundColor: TEAL,
     ...shadow.card,
+  },
+  // Currently recording — same teal with stronger shadow.
+  mediaTileAudioRecording: {
+    backgroundColor: TEAL,
+    ...shadow.cardStrong,
+  },
+  // Currently playing — deeper, contrasting shade so the tile clearly differs
+  // from the recorded-but-paused state.
+  mediaTileAudioPlaying: {
+    backgroundColor: '#0F766E',
+    ...shadow.cardStrong,
   },
   mediaTileLabel: {
     ...typography.caption,

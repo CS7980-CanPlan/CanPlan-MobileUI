@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -17,6 +17,8 @@ import { colors, radius, shadow, spacing, typography } from '../../shared/theme/
 type AllTasksNavigation = NativeStackNavigationProp<MainStackParamList, 'AllTasks'>;
 type AllTasksRoute = RouteProp<MainStackParamList, 'AllTasks'>;
 
+const SETTINGS_MULTI_TAP_TIMEOUT_MS = 1500;
+
 export default function AllTasksScreen() {
   const navigation = useNavigation<AllTasksNavigation>();
   const route = useRoute<AllTasksRoute>();
@@ -31,6 +33,8 @@ export default function AllTasksScreen() {
 
   const [ownerId, setOwnerId] = useState('');
   const [identityError, setIdentityError] = useState<string>();
+  const [settingsTapCount, setSettingsTapCount] = useState(0);
+  const settingsTapResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Only one of these queries is enabled at a time (the other gets an empty id).
   const ownerTasksQuery = useTasksByOwner(categoryMode ? '' : ownerId);
   const categoryTasksQuery = useTasksByCategory(ownerId, categoryId ?? '');
@@ -79,6 +83,43 @@ export default function AllTasksScreen() {
     ? categoryById.get(categoryId)?.color ?? undefined
     : undefined;
 
+  const clearSettingsTapTimeout = useCallback(() => {
+    if (settingsTapResetTimeoutRef.current) {
+      clearTimeout(settingsTapResetTimeoutRef.current);
+      settingsTapResetTimeoutRef.current = null;
+    }
+  }, []);
+
+  const resetSettingsTapState = useCallback(() => {
+    clearSettingsTapTimeout();
+    setSettingsTapCount(0);
+  }, [clearSettingsTapTimeout]);
+
+  useEffect(() => resetSettingsTapState, [resetSettingsTapState]);
+
+  const handleSettingsPress = useCallback(() => {
+    const nextTapCount = settingsTapCount + 1;
+
+    if (nextTapCount >= 3) {
+      resetSettingsTapState();
+      navigation.navigate('Settings');
+      return;
+    }
+
+    setSettingsTapCount(nextTapCount);
+    clearSettingsTapTimeout();
+    settingsTapResetTimeoutRef.current = setTimeout(() => {
+      setSettingsTapCount(0);
+      settingsTapResetTimeoutRef.current = null;
+    }, SETTINGS_MULTI_TAP_TIMEOUT_MS);
+  }, [clearSettingsTapTimeout, navigation, resetSettingsTapState, settingsTapCount]);
+
+  const simpleModeHeaderMessage = useMemo(() => {
+    if (settingsTapCount === 1) return 'Tap 2 times for settings';
+    if (settingsTapCount === 2) return 'Tap 1 time for settings';
+    return 'All Tasks';
+  }, [settingsTapCount]);
+
   return (
     <View style={styles.root}>
       <View
@@ -90,46 +131,74 @@ export default function AllTasksScreen() {
         ]}
       >
         {/* Category view and normal mode show Back; Simple Mode root has none. */}
-        {categoryMode || !simpleMode ? (
-          <BackButton onPress={() => navigation.goBack()} variant="dark" />
-        ) : null}
-        {categoryMode ? (
-          <View
-            style={[styles.categoryBar, { backgroundColor: categoryColor ?? colors.primary }]}
-          />
-        ) : null}
-        <Text accessibilityRole="header" style={styles.headerTitle} numberOfLines={1}>
-          {categoryMode ? categoryName ?? 'Tasks' : 'All Tasks'}
-        </Text>
-        {categoryMode ? null : simpleMode ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-            onPress={() => navigation.navigate('Settings')}
-            style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
-          >
-            <Ionicons name="settings-outline" size={22} color={colors.text} />
-          </Pressable>
-        ) : (
-          <>
+        <View style={styles.headerSide}>
+          {categoryMode || !simpleMode ? (
+            <BackButton onPress={() => navigation.goBack()} variant="dark" />
+          ) : (
+            <View style={styles.headerPlaceholder} />
+          )}
+        </View>
+        <View style={styles.headerCenter}>
+          {categoryMode ? (
+            <View
+              style={[styles.categoryHeaderTitleWrap]}
+            >
+              <View
+                style={[styles.categoryBar, { backgroundColor: categoryColor ?? colors.primary }]}
+              />
+              <Text accessibilityRole="header" style={styles.headerTitle} numberOfLines={1}>
+                {categoryName ?? 'Tasks'}
+              </Text>
+            </View>
+          ) : simpleMode && settingsTapCount > 0 ? (
+            <View style={styles.headerPrompt}>
+              <Text accessibilityRole="header" style={styles.headerPromptText} numberOfLines={1}>
+                {simpleModeHeaderMessage}
+              </Text>
+            </View>
+          ) : (
+            <Text accessibilityRole="header" style={styles.headerTitleCentered} numberOfLines={1}>
+              All Tasks
+            </Text>
+          )}
+        </View>
+        <View
+          style={[
+            styles.headerSide,
+            styles.headerSideRight,
+            !categoryMode && !simpleMode ? styles.headerSideWide : null,
+          ]}
+        >
+          {categoryMode ? null : simpleMode ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Manage tasks"
-              onPress={() => navigation.navigate('ManageTasks')}
+              accessibilityLabel="Settings"
+              onPress={handleSettingsPress}
               style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
             >
-              <Ionicons name="list-outline" size={22} color={colors.text} />
+              <Ionicons name="settings-outline" size={22} color={colors.text} />
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add a task"
-              onPress={() => navigation.navigate('CreateTask')}
-              style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
-            >
-              <Ionicons name="add" size={24} color={colors.text} />
-            </Pressable>
-          </>
-        )}
+          ) : (
+            <View style={styles.headerActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Manage tasks"
+                onPress={() => navigation.navigate('ManageTasks')}
+                style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
+              >
+                <Ionicons name="list-outline" size={22} color={colors.text} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add a task"
+                onPress={() => navigation.navigate('CreateTask')}
+                style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
+              >
+                <Ionicons name="add" size={24} color={colors.text} />
+              </Pressable>
+            </View>
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -219,19 +288,65 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.lg,
   },
-  headerTitle: {
+  headerSide: {
+    width: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  headerSideRight: {
+    alignItems: 'flex-end',
+  },
+  headerSideWide: {
+    width: 96,
+  },
+  headerCenter: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headerPlaceholder: {
+    width: 44,
+    height: 44,
+  },
+  headerTitle: {
     ...typography.title,
     color: colors.text,
+  },
+  headerTitleCentered: {
+    ...typography.title,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  categoryHeaderTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   categoryBar: {
     width: 8,
     height: 32,
     borderRadius: radius.pill,
+  },
+  headerPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    minHeight: 44,
+  },
+  headerPromptText: {
+    ...typography.heading,
+    color: colors.text,
+    textAlign: 'center',
   },
   headerIconButton: {
     width: 44,

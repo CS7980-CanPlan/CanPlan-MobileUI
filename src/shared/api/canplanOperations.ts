@@ -224,6 +224,12 @@ export const DELETE_TASK_STEP = /* GraphQL */ `
   }
 `;
 
+export const REORDER_TASK_STEPS = /* GraphQL */ `
+  mutation ReorderTaskSteps($input: ReorderTaskStepsInput!) {
+    reorderTaskSteps(input: $input) { ${TASK_STEP_FIELDS} }
+  }
+`;
+
 export const DELETE_TASK = /* GraphQL */ `
   mutation DeleteTask($taskId: ID!) {
     deleteTask(taskId: $taskId) { ${TASK_FIELDS} }
