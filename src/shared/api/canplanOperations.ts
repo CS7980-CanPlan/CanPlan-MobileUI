@@ -179,6 +179,18 @@ export const CREATE_CATEGORY = /* GraphQL */ `
   }
 `;
 
+export const UPDATE_CATEGORY = /* GraphQL */ `
+  mutation UpdateCategory($input: UpdateCategoryInput!) {
+    updateCategory(input: $input) { ${CATEGORY_FIELDS} }
+  }
+`;
+
+export const DELETE_CATEGORY = /* GraphQL */ `
+  mutation DeleteCategory($input: DeleteCategoryInput!) {
+    deleteCategory(input: $input) { ${CATEGORY_FIELDS} }
+  }
+`;
+
 export const CREATE_TASK = /* GraphQL */ `
   mutation CreateTask($input: CreateTaskInput!) {
     createTask(input: $input) {

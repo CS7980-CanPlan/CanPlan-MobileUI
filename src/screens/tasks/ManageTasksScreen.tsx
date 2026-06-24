@@ -9,11 +9,17 @@ import DraggableFlatList, {
 } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useDeleteTask, useTasksByOwner } from '../../features/tasks/hooks/useTaskApi';
+import { useMyCategories } from '../../features/categories/hooks/useCategories';
+import {
+  useDeleteTask,
+  useTasksByOwner,
+  useUpdateTask,
+} from '../../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
 import type { Task } from '../../shared/api/canplanTypes';
 import BackButton from '../../shared/components/BackButton';
+import CategoryPickerSheet from '../../shared/components/CategoryPickerSheet';
 import ConfirmDialog from '../../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
@@ -26,9 +32,12 @@ export default function ManageTasksScreen() {
   const [identityError, setIdentityError] = useState<string>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [orderedTasks, setOrderedTasks] = useState<Task[]>([]);
   const tasksQuery = useTasksByOwner(ownerId);
+  const categoriesQuery = useMyCategories(Boolean(ownerId));
   const deleteTaskMutation = useDeleteTask();
+  const updateTaskMutation = useUpdateTask();
 
   useEffect(() => {
     let mounted = true;
@@ -79,7 +88,12 @@ export default function ManageTasksScreen() {
   };
 
   const selectedCount = selectedIds.size;
-  const actionsDisabled = selectedCount === 0 || deleteTaskMutation.isPending;
+  const actionsDisabled =
+    selectedCount === 0 || deleteTaskMutation.isPending || updateTaskMutation.isPending;
+  const categories = useMemo(
+    () => categoriesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [categoriesQuery.data],
+  );
 
   const handleDelete = async () => {
     if (selectedCount === 0 || deleteTaskMutation.isPending) return;
@@ -96,6 +110,21 @@ export default function ManageTasksScreen() {
         err instanceof Error ? err.message : 'Could not delete the selected tasks.',
       );
       setConfirmDelete(false);
+    }
+  };
+
+  const handleMoveToCategory = async (categoryId: string) => {
+    setCategorySheetVisible(false);
+    if (selectedCount === 0 || updateTaskMutation.isPending) return;
+    try {
+      for (const taskId of selectedIds) {
+        await updateTaskMutation.mutateAsync({ taskId, categoryId });
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      setIdentityError(
+        err instanceof Error ? err.message : 'Could not move the selected tasks.',
+      );
     }
   };
 
@@ -185,9 +214,7 @@ export default function ManageTasksScreen() {
           icon="folder-open-outline"
           label="Add to"
           disabled={actionsDisabled}
-          onPress={() => {
-            // Placeholder — future: open category picker to move selected tasks.
-          }}
+          onPress={() => setCategorySheetVisible(true)}
         />
       </View>
 
@@ -203,6 +230,20 @@ export default function ManageTasksScreen() {
         }}
         onCancel={() => {
           if (!deleteTaskMutation.isPending) setConfirmDelete(false);
+        }}
+      />
+
+      <CategoryPickerSheet
+        visible={categorySheetVisible}
+        categories={categories}
+        isLoading={categoriesQuery.isLoading}
+        busy={updateTaskMutation.isPending}
+        title={`Add ${selectedCount} ${selectedCount === 1 ? 'task' : 'tasks'} to…`}
+        onCancel={() => {
+          if (!updateTaskMutation.isPending) setCategorySheetVisible(false);
+        }}
+        onSelect={(categoryId) => {
+          void handleMoveToCategory(categoryId);
         }}
       />
     </View>

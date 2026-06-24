@@ -125,7 +125,7 @@ export default function HomeScreen() {
           <DestinationCard
             title="Categories"
             subtitle="Browse tasks by category"
-            onPress={() => console.log('TODO: Categories screen')}
+            onPress={() => navigation.navigate('Categories')}
           />
           <DestinationCard
             title="Calendar"

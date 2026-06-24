@@ -197,6 +197,20 @@ export interface CreateCategoryInput {
   sortOrder?: number | null;
 }
 
+export interface UpdateCategoryInput {
+  categoryId: string;
+  /** Omitted ⇒ unchanged. Rejected for the default category and for null. */
+  name?: string;
+  /** Omitted ⇒ unchanged; explicit null ⇒ cleared. */
+  color?: string | null;
+  /** Omitted ⇒ unchanged; explicit null ⇒ cleared. */
+  sortOrder?: number | null;
+}
+
+export interface DeleteCategoryInput {
+  categoryId: string;
+}
+
 export interface TaskScheduleInput {
   repeatEvery: number;
   repeatUnit: RepeatUnit;

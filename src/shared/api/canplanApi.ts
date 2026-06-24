@@ -24,6 +24,7 @@ import type {
   CreateTaskInput,
   CreateTaskStepInput,
   DeleteAssignmentInput,
+  DeleteCategoryInput,
   DeleteMediaAssetInput,
   DeleteTaskStepInput,
   GenerateTaskStepsInput,
@@ -38,6 +39,7 @@ import type {
   TaskStep,
   TaskStepsResponse,
   UpdateAssignmentStatusInput,
+  UpdateCategoryInput,
   UpdateMyUserProfileInput,
   UpdateTaskInput,
   UpdateTaskStepInput,
@@ -315,6 +317,22 @@ export const canPlanApi = {
       { input },
     );
     return data.createCategory;
+  },
+
+  async updateCategory(input: UpdateCategoryInput): Promise<Category | null> {
+    const data = await graphqlRequest<{ updateCategory: Category | null }, { input: UpdateCategoryInput }>(
+      operations.UPDATE_CATEGORY,
+      { input },
+    );
+    return data.updateCategory;
+  },
+
+  async deleteCategory(input: DeleteCategoryInput): Promise<Category | null> {
+    const data = await graphqlRequest<{ deleteCategory: Category | null }, { input: DeleteCategoryInput }>(
+      operations.DELETE_CATEGORY,
+      { input },
+    );
+    return data.deleteCategory;
   },
 
   async createTask(input: CreateTaskInput): Promise<Task | null> {
