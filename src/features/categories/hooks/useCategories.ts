@@ -1,8 +1,17 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-import type { CreateCategoryInput } from '../../../shared/api/canplanTypes';
+import type {
+  CreateCategoryInput,
+  DeleteCategoryInput,
+  UpdateCategoryInput,
+} from '../../../shared/api/canplanTypes';
 import { queryKeys } from '../../../shared/query/queryKeys';
-import { createCategory, listMyCategories } from '../api/categoryApi';
+import {
+  createCategory,
+  deleteCategory,
+  listMyCategories,
+  updateCategory,
+} from '../api/categoryApi';
 
 /** Paginated category list for the authenticated user, including their real default category. */
 export function useMyCategories(enabled = true, limit = 50) {
@@ -15,14 +24,35 @@ export function useMyCategories(enabled = true, limit = 50) {
   });
 }
 
+/** Invalidate category and task caches — both move when a category changes. */
+function invalidateCategoryCaches(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+}
+
 export function useCreateCategory() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (input: CreateCategoryInput) => createCategory(input),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
-    },
+    onSuccess: () => invalidateCategoryCaches(queryClient),
+  });
+}
+
+export function useUpdateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateCategoryInput) => updateCategory(input),
+    onSuccess: () => invalidateCategoryCaches(queryClient),
+  });
+}
+
+export function useDeleteCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: DeleteCategoryInput) => deleteCategory(input),
+    onSuccess: () => invalidateCategoryCaches(queryClient),
   });
 }

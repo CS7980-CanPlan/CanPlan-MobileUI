@@ -343,6 +343,8 @@ export default function CreateTaskScreen() {
   const route = useRoute<CreateTaskRoute>();
   const insets = useSafeAreaInsets();
   const existingTaskId = route.params?.taskId;
+  const fixedCategoryId = route.params?.fixedCategoryId;
+  const fixedCategoryName = route.params?.fixedCategoryName;
   const createTaskMutation = useCreateTask();
   const deleteTaskMutation = useDeleteTask();
   const updateTaskMutation = useUpdateTask();
@@ -368,7 +370,8 @@ export default function CreateTaskScreen() {
   const [coverNeedsUpload, setCoverNeedsUpload] = useState(false);
   const [steps, setSteps] = useState<DraftStep[]>([]);
   const [categoryOwnerId, setCategoryOwnerId] = useState('');
-  const [categoryId, setCategoryId] = useState<string>();
+  // Pre-pin to the fixed category when creating from a category view.
+  const [categoryId, setCategoryId] = useState<string | undefined>(fixedCategoryId);
   const [savedCategoryId, setSavedCategoryId] = useState<string>();
   const [schedule, setSchedule] = useState<TaskScheduleInput>();
   const [savedSchedule, setSavedSchedule] = useState<TaskScheduleInput>();
@@ -398,6 +401,8 @@ export default function CreateTaskScreen() {
     createCoverUploadUrlMutation.isPending ||
     deleteMediaAssetMutation.isPending;
   const trimmedTitle = title.trim();
+  // When pinned to a category (and not editing), the picker is read-only.
+  const categoryLocked = Boolean(fixedCategoryId) && !existingTaskId;
   const shouldConfirmDraftDiscard =
     !existingTaskId && (isCreatedTaskDraft || isDraftCreationPending);
   const categories = useMemo(
@@ -579,6 +584,21 @@ export default function CreateTaskScreen() {
 
     setExitDestination(undefined);
     if (exitDestination === 'all-tasks') {
+      if (fixedCategoryId) {
+        // Return to the category view we came from (back from it → Categories).
+        navigation.reset({
+          index: 2,
+          routes: [
+            { name: 'Home' },
+            { name: 'Categories' },
+            {
+              name: 'AllTasks',
+              params: { categoryId: fixedCategoryId, categoryName: fixedCategoryName },
+            },
+          ],
+        });
+        return;
+      }
       navigation.reset({
         index: 1,
         routes: [{ name: 'Home' }, { name: 'AllTasks' }],
@@ -1107,13 +1127,13 @@ export default function CreateTaskScreen() {
           <Text style={styles.sectionLabel}>Category</Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Choose a category"
-            accessibilityState={{ disabled: isBusy }}
-            disabled={isBusy}
-            onPress={() => setCategorySheetVisible(true)}
+            accessibilityLabel={categoryLocked ? 'Category (fixed)' : 'Choose a category'}
+            accessibilityState={{ disabled: isBusy || categoryLocked }}
+            disabled={isBusy || categoryLocked}
+            onPress={categoryLocked ? undefined : () => setCategorySheetVisible(true)}
             style={({ pressed }) => [
               styles.selectionRow,
-              pressed && !isBusy ? styles.selectionRowPressed : null,
+              pressed && !isBusy && !categoryLocked ? styles.selectionRowPressed : null,
               isBusy ? styles.controlDisabled : null,
             ]}
           >
@@ -1121,10 +1141,19 @@ export default function CreateTaskScreen() {
               <View style={[styles.selectedCategoryMark, { backgroundColor: selectedCategory.color || colors.primary }]} />
             ) : null}
             <Text style={[styles.selectionText, selectedCategory ? styles.selectionTextActive : null]}>
-              {selectedCategory?.name || 'No Category'}
+              {selectedCategory?.name || fixedCategoryName || 'No Category'}
             </Text>
-            <Ionicons name="chevron-forward" size={24} color={colors.disabled} />
+            <Ionicons
+              name={categoryLocked ? 'lock-closed' : 'chevron-forward'}
+              size={categoryLocked ? 18 : 24}
+              color={colors.disabled}
+            />
           </Pressable>
+          {categoryLocked ? (
+            <Text style={styles.stepHint}>
+              This task will be added to “{selectedCategory?.name || fixedCategoryName}”.
+            </Text>
+          ) : null}
         </View>
       </ScrollView>
 

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMyCategories } from '../../features/categories/hooks/useCategories';
 import { useSimpleMode } from '../../features/users/hooks/useSimpleMode';
-import { useTasksByOwner } from '../../features/tasks/hooks/useTaskApi';
+import { useTasksByCategory, useTasksByOwner } from '../../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
 import BackButton from '../../shared/components/BackButton';
@@ -15,14 +15,26 @@ import TaskListItem from '../../shared/components/TaskListItem';
 import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
 type AllTasksNavigation = NativeStackNavigationProp<MainStackParamList, 'AllTasks'>;
+type AllTasksRoute = RouteProp<MainStackParamList, 'AllTasks'>;
 
 export default function AllTasksScreen() {
   const navigation = useNavigation<AllTasksNavigation>();
+  const route = useRoute<AllTasksRoute>();
   const insets = useSafeAreaInsets();
   const simpleMode = useSimpleMode();
+
+  // When a categoryId is supplied this screen is a single-category view:
+  // filtered tasks, back-to-Categories, and no manage/add nav buttons.
+  const categoryId = route.params?.categoryId;
+  const categoryName = route.params?.categoryName;
+  const categoryMode = Boolean(categoryId);
+
   const [ownerId, setOwnerId] = useState('');
   const [identityError, setIdentityError] = useState<string>();
-  const tasksQuery = useTasksByOwner(ownerId);
+  // Only one of these queries is enabled at a time (the other gets an empty id).
+  const ownerTasksQuery = useTasksByOwner(categoryMode ? '' : ownerId);
+  const categoryTasksQuery = useTasksByCategory(ownerId, categoryId ?? '');
+  const tasksQuery = categoryMode ? categoryTasksQuery : ownerTasksQuery;
   const categoriesQuery = useMyCategories(Boolean(ownerId));
 
   useEffect(() => {
@@ -62,14 +74,34 @@ export default function AllTasksScreen() {
     [categoriesQuery.data],
   );
   const error = identityError || (tasksQuery.error ? tasksQuery.error.message : undefined);
+  // The selected category's colour drives the header accent bar + tinted band.
+  const categoryColor = categoryId
+    ? categoryById.get(categoryId)?.color ?? undefined
+    : undefined;
 
   return (
     <View style={styles.root}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        {/* Simple Mode makes All Tasks the root: no back, no manage/add — just Settings. */}
-        {simpleMode ? null : <BackButton onPress={() => navigation.goBack()} variant="dark" />}
-        <Text accessibilityRole="header" style={styles.headerTitle}>All Tasks</Text>
-        {simpleMode ? (
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insets.top + spacing.sm },
+          // Tint the header band with the category colour (low-alpha 8-digit hex).
+          categoryMode && categoryColor ? { backgroundColor: `${categoryColor}22` } : null,
+        ]}
+      >
+        {/* Category view and normal mode show Back; Simple Mode root has none. */}
+        {categoryMode || !simpleMode ? (
+          <BackButton onPress={() => navigation.goBack()} variant="dark" />
+        ) : null}
+        {categoryMode ? (
+          <View
+            style={[styles.categoryBar, { backgroundColor: categoryColor ?? colors.primary }]}
+          />
+        ) : null}
+        <Text accessibilityRole="header" style={styles.headerTitle} numberOfLines={1}>
+          {categoryMode ? categoryName ?? 'Tasks' : 'All Tasks'}
+        </Text>
+        {categoryMode ? null : simpleMode ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Settings"
@@ -156,17 +188,24 @@ export default function AllTasksScreen() {
           </Pressable>
         ) : null}
 
-        {simpleMode ? null : (
+        {categoryMode || !simpleMode ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add a task"
-            onPress={() => navigation.navigate('CreateTask')}
+            onPress={() =>
+              navigation.navigate(
+                'CreateTask',
+                categoryMode
+                  ? { fixedCategoryId: categoryId, fixedCategoryName: categoryName }
+                  : undefined,
+              )
+            }
             style={({ pressed }) => [styles.addTaskButton, pressed ? styles.addTaskButtonPressed : null]}
           >
             <Ionicons name="add" size={32} color={colors.primary} />
             <Text style={styles.addTaskText}>Add a task</Text>
           </Pressable>
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -188,6 +227,11 @@ const styles = StyleSheet.create({
     flex: 1,
     ...typography.title,
     color: colors.text,
+  },
+  categoryBar: {
+    width: 8,
+    height: 32,
+    borderRadius: radius.pill,
   },
   headerIconButton: {
     width: 44,

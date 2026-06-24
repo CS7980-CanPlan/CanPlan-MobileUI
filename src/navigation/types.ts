@@ -32,11 +32,24 @@ export type OnboardingStackParamList = {
 export type MainStackParamList = {
   Home: undefined;
   Settings: undefined;
-  AllTasks: undefined;
+  Categories: undefined;
+  /**
+   * Without params: all of the owner's tasks. With `categoryId`: only tasks in
+   * that category (the back button returns to Categories; `categoryName` titles
+   * the screen).
+   */
+  AllTasks: { categoryId?: string; categoryName?: string } | undefined;
   ManageTasks: undefined;
   TaskView: { taskId: string };
   TaskDetail: { taskId: string };
-  CreateTask: { taskId?: string } | undefined;
+  /**
+   * `fixedCategoryId` pins the new task to one category and hides the category
+   * picker (used when creating from a category view); `fixedCategoryName` titles
+   * the list we return to after saving.
+   */
+  CreateTask:
+    | { taskId?: string; fixedCategoryId?: string; fixedCategoryName?: string }
+    | undefined;
   CreateTaskStep: { taskId: string; stepId?: string };
   ReorderSteps: { taskId: string };
 };
