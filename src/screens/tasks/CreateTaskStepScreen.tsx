@@ -109,6 +109,10 @@ export default function CreateTaskStepScreen() {
   const existingAudioQuery = useMediaDownloadUrl(taskId, existingAudioAsset?.assetId ?? '');
 
   const [title, setTitle] = useState('');
+  // Multi-line step title: caret jumps to the end on focus, snaps to start on blur.
+  const [titleSelection, setTitleSelection] = useState<{ start: number; end: number }>();
+  const titleCaretModeRef = useRef<'free' | 'end' | 'start'>('free');
+  const titleInputRef = useRef<TextInput>(null);
   const [description, setDescription] = useState('');
   const [initialTitle, setInitialTitle] = useState('');
   const [initialDescription, setInitialDescription] = useState('');
@@ -205,6 +209,12 @@ export default function CreateTaskStepScreen() {
     if (isBusy) return;
     if (navigation.canGoBack()) navigation.goBack();
     else navigation.navigate('CreateTask', { taskId });
+  };
+
+  // Tapping any empty area deactivates the step-title field (which also scrolls
+  // a long title back to its start).
+  const dismissTitleEditing = () => {
+    titleInputRef.current?.blur();
   };
 
   // ── Media upload ───────────────────────────────────────────────────────────
@@ -525,6 +535,11 @@ export default function CreateTaskStepScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
+          accessible={false}
+          onPress={dismissTitleEditing}
+          style={StyleSheet.absoluteFill}
+        />
+        <Pressable
           accessibilityRole="button"
           accessibilityLabel="Cancel"
           disabled={isBusy}
@@ -559,6 +574,11 @@ export default function CreateTaskStepScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <Pressable
+          accessible={false}
+          onPress={dismissTitleEditing}
+          style={StyleSheet.absoluteFill}
+        />
         {/* ── Error banner ── */}
         {inlineError ? (
           <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorBanner}>
@@ -571,14 +591,34 @@ export default function CreateTaskStepScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Step Title</Text>
           <TextInput
+            ref={titleInputRef}
             accessibilityLabel="Step title"
             editable={!isBusy}
             value={title}
-            onChangeText={setTitle}
+            // Single logical line — wrap visually, drop any entered newline.
+            onChangeText={(text) => setTitle(text.replace(/\n/g, ''))}
             placeholder="e.g. Get eggs from fridge"
             placeholderTextColor={colors.disabled}
             style={styles.titleInput}
-            returnKeyType="done"
+            multiline
+            scrollEnabled
+            textAlignVertical="top"
+            selection={titleSelection}
+            onFocus={() => {
+              titleCaretModeRef.current = 'end';
+              const end = title.length;
+              setTitleSelection({ start: end, end });
+            }}
+            onSelectionChange={() => {
+              if (titleCaretModeRef.current === 'end') {
+                titleCaretModeRef.current = 'free';
+                setTitleSelection(undefined);
+              }
+            }}
+            onBlur={() => {
+              titleCaretModeRef.current = 'start';
+              setTitleSelection({ start: 0, end: 0 });
+            }}
           />
         </View>
 
@@ -1003,6 +1043,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingTop: spacing.sm,
     minHeight: 80,
+    // Up to ~3 lines (36 × 3 + top padding); longer titles scroll in-place.
+    maxHeight: 116,
   },
   // ── Media tiles ─────────────────────────────────────────────────────────────
   mediaTiles: {

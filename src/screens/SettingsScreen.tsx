@@ -66,11 +66,16 @@ export default function SettingsScreen() {
     }
   }, [isLoading, savedSimpleMode]);
 
+  // Set right before we intentionally navigate away (Done or a confirmed
+  // discard) so the `beforeRemove` guard below lets that navigation through
+  // instead of re-opening the confirm dialog.
+  const leavingRef = useRef(false);
+
   // Intercept every way of leaving (swipe, hardware back) when there are
   // unsaved changes, and treat it like tapping Cancel.
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (event) => {
-      if (!isDirty) {
+      if (leavingRef.current || !isDirty) {
         return;
       }
       event.preventDefault();
@@ -84,6 +89,7 @@ export default function SettingsScreen() {
   // just go back to wherever we came from, preserving history.
   const leave = useCallback(
     (effectiveSimpleMode: boolean) => {
+      leavingRef.current = true;
       const initial = initialSimpleModeRef.current ?? effectiveSimpleMode;
       if (effectiveSimpleMode !== initial) {
         navigation.reset({
@@ -98,11 +104,17 @@ export default function SettingsScreen() {
   );
 
   const handleDone = useCallback(() => {
+    // Always leave according to the current setting. Only hit the server when
+    // something actually changed.
+    if (!isDirty) {
+      leave(simpleMode);
+      return;
+    }
     updateProfile.mutate(
       { accessibilitySettings: { ...savedSettings, simpleMode } },
       { onSuccess: () => leave(simpleMode) },
     );
-  }, [updateProfile, savedSettings, simpleMode, leave]);
+  }, [isDirty, updateProfile, savedSettings, simpleMode, leave]);
 
   const handleCancelPress = useCallback(() => {
     if (updateProfile.isPending) {
@@ -227,6 +239,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
+    marginLeft: spacing.md,
     ...typography.title,
     color: colors.text,
   },

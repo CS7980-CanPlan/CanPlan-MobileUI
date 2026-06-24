@@ -41,6 +41,11 @@ type TaskPositions = Record<string, number>;
 
 const MANAGE_TASK_ROW_SLOT_HEIGHT = 64;
 const REORDER_ANIMATION_DURATION_MS = 260;
+// Wait for the confirm dialog to finish closing before the success toast shows,
+// so the two don't overlap. Raise this number to make the toast appear later.
+const MOVE_SUCCESS_TOAST_DELAY_MS = 400;
+// How long the success toast stays on screen.
+const TOAST_VISIBLE_MS = 1800;
 
 function orderTasksByIds(tasks: Task[], orderedIds: string[]) {
   if (orderedIds.length === 0) return tasks;
@@ -112,6 +117,11 @@ export default function ManageTasksScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
+  // The category awaiting move confirmation, and a transient success toast.
+  const [pendingCategory, setPendingCategory] = useState<{ categoryId: string; name: string }>();
+  const [toastMessage, setToastMessage] = useState<string>();
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastDelayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [orderedTasks, setOrderedTasks] = useState<Task[]>([]);
   const latestTaskOrderRef = useRef<string[]>([]);
   const tasksQuery = useTasksByOwner(ownerId);
@@ -216,18 +226,55 @@ export default function ManageTasksScreen() {
     }
   };
 
-  const handleMoveToCategory = async (categoryId: string) => {
-    setCategorySheetVisible(false);
-    if (selectedCount === 0 || updateTaskMutation.isPending) return;
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(undefined);
+      toastTimeoutRef.current = null;
+    }, TOAST_VISIBLE_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      if (toastDelayTimeoutRef.current) clearTimeout(toastDelayTimeoutRef.current);
+    },
+    [],
+  );
+
+  // Picking a category no longer moves immediately — ask the user to confirm first.
+  const requestMoveToCategory = useCallback(
+    (categoryId: string) => {
+      const name = categories.find((c) => c.categoryId === categoryId)?.name ?? 'this category';
+      setCategorySheetVisible(false);
+      setPendingCategory({ categoryId, name });
+    },
+    [categories],
+  );
+
+  const confirmMoveToCategory = async () => {
+    if (!pendingCategory || selectedCount === 0 || updateTaskMutation.isPending) return;
+    const { categoryId, name } = pendingCategory;
+    const movedCount = selectedCount;
     try {
       for (const taskId of selectedIds) {
         await updateTaskMutation.mutateAsync({ taskId, categoryId });
       }
       setSelectedIds(new Set());
+      setPendingCategory(undefined);
+      // Let the confirm dialog finish dismissing before the toast appears.
+      const message = `Added ${movedCount} ${movedCount === 1 ? 'task' : 'tasks'} to ${name}`;
+      if (toastDelayTimeoutRef.current) clearTimeout(toastDelayTimeoutRef.current);
+      toastDelayTimeoutRef.current = setTimeout(() => {
+        showToast(message);
+        toastDelayTimeoutRef.current = null;
+      }, MOVE_SUCCESS_TOAST_DELAY_MS);
     } catch (err) {
       setIdentityError(
         err instanceof Error ? err.message : 'Could not move the selected tasks.',
       );
+      setPendingCategory(undefined);
     }
   };
 
@@ -317,10 +364,39 @@ export default function ManageTasksScreen() {
         onCancel={() => {
           if (!updateTaskMutation.isPending) setCategorySheetVisible(false);
         }}
-        onSelect={(categoryId) => {
-          void handleMoveToCategory(categoryId);
+        onSelect={requestMoveToCategory}
+      />
+
+      <ConfirmDialog
+        visible={Boolean(pendingCategory)}
+        title={`Move ${selectedCount} ${selectedCount === 1 ? 'task' : 'tasks'}?`}
+        message={
+          pendingCategory
+            ? `Add the selected ${selectedCount === 1 ? 'task' : 'tasks'} to “${pendingCategory.name}”.`
+            : undefined
+        }
+        confirmLabel={updateTaskMutation.isPending ? 'Moving…' : 'Move'}
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          void confirmMoveToCategory();
+        }}
+        onCancel={() => {
+          // Cancel returns to the category picker rather than the manage screen.
+          if (!updateTaskMutation.isPending) {
+            setPendingCategory(undefined);
+            setCategorySheetVisible(true);
+          }
         }}
       />
+
+      {toastMessage ? (
+        <View pointerEvents="none" style={styles.toastOverlay}>
+          <View style={styles.toastCard}>
+            <Ionicons name="checkmark-circle" size={30} color={colors.success} />
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -626,5 +702,29 @@ const styles = StyleSheet.create({
   },
   bottomActionLabelDisabled: {
     color: colors.disabled,
+  },
+  // Transient "added" confirmation — a smaller, 80%-opacity version of the
+  // confirm-dialog card, centred and non-interactive.
+  toastOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  toastCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    maxWidth: 300,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    opacity: 0.8,
+    ...shadow.cardStrong,
+  },
+  toastText: {
+    ...typography.bodyStrong,
+    color: colors.text,
   },
 });
