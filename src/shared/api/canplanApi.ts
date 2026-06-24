@@ -38,6 +38,7 @@ import type {
   TaskStep,
   TaskStepsResponse,
   UpdateAssignmentStatusInput,
+  UpdateMyUserProfileInput,
   UpdateTaskInput,
   UpdateTaskStepInput,
   UserProfile,
@@ -273,6 +274,26 @@ export const canPlanApi = {
       },
     });
     return data.createUserProfile ? mapUserProfile(data.createUserProfile) : null;
+  },
+
+  async updateMyUserProfile(input: UpdateMyUserProfileInput): Promise<UserProfile> {
+    // accessibilitySettings is AWSJSON: omitted ⇒ unchanged, explicit null ⇒
+    // cleared (sent as GraphQL null, not the string "null"), object ⇒ JSON
+    // string (full replacement — the API does not deep-merge).
+    const accessibilitySettings =
+      input.accessibilitySettings === undefined
+        ? undefined
+        : input.accessibilitySettings === null
+          ? null
+          : JSON.stringify(input.accessibilitySettings);
+
+    const data = await graphqlRequest<
+      { updateMyUserProfile: RawUserProfile },
+      { input: Omit<UpdateMyUserProfileInput, 'accessibilitySettings'> & { accessibilitySettings?: string | null } }
+    >(operations.UPDATE_MY_USER_PROFILE, {
+      input: { ...input, accessibilitySettings },
+    });
+    return mapUserProfile(data.updateMyUserProfile);
   },
 
   async createSupportLink(input: CreateSupportLinkInput): Promise<SupportLink | null> {

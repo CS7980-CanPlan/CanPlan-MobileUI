@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMediaDownloadUrl } from '../../features/media/hooks/useMedia';
+import { useSimpleMode } from '../../features/users/hooks/useSimpleMode';
 import { useTask } from '../../features/tasks/hooks/useTask';
 import { useTaskSteps } from '../../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../../navigation/types';
@@ -238,6 +239,7 @@ export default function TaskViewScreen() {
   const navigation = useNavigation<TaskViewNavigation>();
   const route = useRoute<TaskViewRoute>();
   const insets = useSafeAreaInsets();
+  const simpleMode = useSimpleMode();
   const { taskId } = route.params;
 
   const taskQuery = useTask(taskId);
@@ -313,14 +315,17 @@ export default function TaskViewScreen() {
         >
           {task.title}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open task details"
-          onPress={() => navigation.navigate('TaskDetail', { taskId })}
-          style={({ pressed }) => [styles.menuButton, pressed ? styles.pressed : null]}
-        >
-          <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
-        </Pressable>
+        {/* Simple Mode hides the details/edit menu — viewing steps only. */}
+        {simpleMode ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open task details"
+            onPress={() => navigation.navigate('TaskDetail', { taskId })}
+            style={({ pressed }) => [styles.menuButton, pressed ? styles.pressed : null]}
+          >
+            <Ionicons name="ellipsis-horizontal" size={22} color={colors.text} />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView

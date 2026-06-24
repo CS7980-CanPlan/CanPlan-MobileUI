@@ -95,7 +95,7 @@ export default function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Settings"
-              onPress={() => console.log('TODO: Settings screen')}
+              onPress={() => navigation.navigate('Settings')}
               style={({ pressed }) => [styles.iconBtn, pressed ? styles.chipPressed : null]}
               hitSlop={6}
             >

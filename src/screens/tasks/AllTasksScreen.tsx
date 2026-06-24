@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMyCategories } from '../../features/categories/hooks/useCategories';
+import { useSimpleMode } from '../../features/users/hooks/useSimpleMode';
 import { useTasksByOwner } from '../../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
@@ -18,6 +19,7 @@ type AllTasksNavigation = NativeStackNavigationProp<MainStackParamList, 'AllTask
 export default function AllTasksScreen() {
   const navigation = useNavigation<AllTasksNavigation>();
   const insets = useSafeAreaInsets();
+  const simpleMode = useSimpleMode();
   const [ownerId, setOwnerId] = useState('');
   const [identityError, setIdentityError] = useState<string>();
   const tasksQuery = useTasksByOwner(ownerId);
@@ -64,24 +66,38 @@ export default function AllTasksScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <BackButton onPress={() => navigation.goBack()} variant="dark" />
+        {/* Simple Mode makes All Tasks the root: no back, no manage/add — just Settings. */}
+        {simpleMode ? null : <BackButton onPress={() => navigation.goBack()} variant="dark" />}
         <Text accessibilityRole="header" style={styles.headerTitle}>All Tasks</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Manage tasks"
-          onPress={() => navigation.navigate('ManageTasks')}
-          style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
-        >
-          <Ionicons name="list-outline" size={22} color={colors.text} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add a task"
-          onPress={() => navigation.navigate('CreateTask')}
-          style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
-        >
-          <Ionicons name="add" size={24} color={colors.text} />
-        </Pressable>
+        {simpleMode ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            onPress={() => navigation.navigate('Settings')}
+            style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
+          >
+            <Ionicons name="settings-outline" size={22} color={colors.text} />
+          </Pressable>
+        ) : (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Manage tasks"
+              onPress={() => navigation.navigate('ManageTasks')}
+              style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
+            >
+              <Ionicons name="list-outline" size={22} color={colors.text} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add a task"
+              onPress={() => navigation.navigate('CreateTask')}
+              style={({ pressed }) => [styles.headerIconButton, pressed ? styles.pressed : null]}
+            >
+              <Ionicons name="add" size={24} color={colors.text} />
+            </Pressable>
+          </>
+        )}
       </View>
 
       <ScrollView
@@ -140,15 +156,17 @@ export default function AllTasksScreen() {
           </Pressable>
         ) : null}
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add a task"
-          onPress={() => navigation.navigate('CreateTask')}
-          style={({ pressed }) => [styles.addTaskButton, pressed ? styles.addTaskButtonPressed : null]}
-        >
-          <Ionicons name="add" size={32} color={colors.primary} />
-          <Text style={styles.addTaskText}>Add a task</Text>
-        </Pressable>
+        {simpleMode ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add a task"
+            onPress={() => navigation.navigate('CreateTask')}
+            style={({ pressed }) => [styles.addTaskButton, pressed ? styles.addTaskButtonPressed : null]}
+          >
+            <Ionicons name="add" size={32} color={colors.primary} />
+            <Text style={styles.addTaskText}>Add a task</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </View>
   );

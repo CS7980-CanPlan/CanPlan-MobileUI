@@ -12,11 +12,12 @@ import type {
   CreateMyUserProfileInput,
   CreateSupportLinkInput,
   PageInput,
+  UpdateMyUserProfileInput,
   UserProfile,
 } from '../../../shared/api/canplanTypes';
 
 export { canPlanApi as usersApi };
-export type { CreateMyUserProfileInput };
+export type { CreateMyUserProfileInput, UpdateMyUserProfileInput };
 
 /**
  * Returns the profile of the currently signed-in user, or `null` if no profile
@@ -41,6 +42,16 @@ export async function createMyProfile(
     throw new Error('createUserProfile returned no profile.');
   }
   return profile;
+}
+
+/**
+ * Updates the signed-in caller's own profile (partial update). The owner is
+ * always the Cognito identity — there is no `userId` to pass.
+ */
+export function updateMyProfile(
+  input: UpdateMyUserProfileInput,
+): Promise<UserProfile> {
+  return canPlanApi.updateMyUserProfile(input);
 }
 
 export function getUserProfile(userId: string) {

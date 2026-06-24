@@ -20,6 +20,7 @@ import OnboardingNameScreen from './src/screens/auth/OnboardingNameScreen';
 import SignInScreen from './src/screens/auth/SignInScreen';
 import VerifyEmailScreen from './src/screens/auth/VerifyEmailScreen';
 import HomeScreen from './src/screens/HomeScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import AllTasksScreen from './src/screens/tasks/AllTasksScreen';
 import CreateTaskScreen from './src/screens/tasks/CreateTaskScreen';
 import CreateTaskStepScreen from './src/screens/tasks/CreateTaskStepScreen';
@@ -81,6 +82,7 @@ function RootStack() {
       ) : (
         <>
           <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="AllTasks" component={AllTasksScreen} />
           <Stack.Screen name="ManageTasks" component={ManageTasksScreen} />
           <Stack.Screen name="TaskView" component={TaskViewScreen} />
