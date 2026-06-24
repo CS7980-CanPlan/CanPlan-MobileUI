@@ -16,7 +16,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -39,6 +38,7 @@ import { useCreateTaskStep, useTaskSteps, useUpdateTaskStep } from '../../featur
 import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
 import type { MediaType } from '../../shared/api/canplanTypes';
+import CachedImage from '../../shared/components/CachedImage';
 import ConfirmDialog from '../../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
@@ -721,11 +721,12 @@ export default function CreateTaskStepScreen() {
         {/* ── Visual preview (image or video). ── */}
         {visualUri && visualType === 'IMAGE' ? (
           <View style={styles.mediaPreview}>
-            <Image
+            <CachedImage
               accessibilityLabel="Step photo preview"
-              source={{ uri: visualUri }}
+              uri={visualUri ?? null}
+              cacheKey={pendingVisual?.uri ?? existingVisualAsset?.assetId ?? ''}
               style={styles.previewMedia}
-              resizeMode="cover"
+              contentFit="cover"
             />
             <Pressable
               accessibilityRole="button"

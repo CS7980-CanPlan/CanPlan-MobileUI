@@ -7,7 +7,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -17,13 +16,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useMediaDownloadUrl } from '../../features/media/hooks/useMedia';
+import { useCachedMediaUri } from '../../features/media/hooks/useCachedMedia';
 import { useSimpleMode } from '../../features/users/hooks/useSimpleMode';
 import { useTask } from '../../features/tasks/hooks/useTask';
 import { useTaskSteps } from '../../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../../navigation/types';
 import type { TaskStep } from '../../shared/api/canplanTypes';
 import BackButton from '../../shared/components/BackButton';
+import CachedImage from '../../shared/components/CachedImage';
 import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
 type TaskViewNavigation = NativeStackNavigationProp<MainStackParamList, 'TaskView'>;
@@ -34,7 +34,17 @@ const TEAL_LIGHT = '#EBF9F8';
 
 // ── Full-screen photo viewer ─────────────────────────────────────────────────
 
-function PhotoViewer({ uri, visible, onClose }: { uri: string; visible: boolean; onClose: () => void }) {
+function PhotoViewer({
+  uri,
+  cacheKey,
+  visible,
+  onClose,
+}: {
+  uri: string;
+  cacheKey: string;
+  visible: boolean;
+  onClose: () => void;
+}) {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
@@ -45,11 +55,12 @@ function PhotoViewer({ uri, visible, onClose }: { uri: string; visible: boolean;
           onPress={onClose}
           style={StyleSheet.absoluteFill}
         />
-        <Image
+        <CachedImage
           accessibilityLabel="Full step photo"
-          source={{ uri }}
+          uri={uri}
+          cacheKey={cacheKey}
           style={styles.viewerImage}
-          resizeMode="contain"
+          contentFit="contain"
         />
         <Pressable
           accessibilityRole="button"
@@ -90,10 +101,10 @@ function StepCard({ taskId, step, index, isActive, onActivate, onDeactivate }: S
     [step.mediaAssets],
   );
 
-  const visualQuery = useMediaDownloadUrl(taskId, visual?.assetId ?? '');
-  const audioQuery = useMediaDownloadUrl(taskId, audio?.assetId ?? '');
-  const visualUri = visualQuery.data?.downloadUrl ?? null;
-  const audioUri = audioQuery.data?.downloadUrl ?? null;
+  // Cached URIs: images keep the (rotating) remote URL — expo-image caches their
+  // bytes by cacheKey; video/audio resolve to a local file path once downloaded.
+  const visualUri = useCachedMediaUri(taskId, visual);
+  const audioUri = useCachedMediaUri(taskId, audio);
 
   const isImage = visual?.type === 'IMAGE';
   const isVideo = visual?.type === 'VIDEO';
@@ -186,11 +197,12 @@ function StepCard({ taskId, step, index, isActive, onActivate, onDeactivate }: S
               accessibilityLabel={`View ${step.text} photo full screen`}
               onPress={() => setPhotoVisible(true)}
             >
-              <Image
+              <CachedImage
                 accessibilityLabel={`${step.text} photo`}
-                source={{ uri: visualUri }}
+                uri={visualUri}
+                cacheKey={visual?.assetId ?? ''}
                 style={styles.stepMedia}
-                resizeMode="cover"
+                contentFit="cover"
               />
             </Pressable>
             {/* Overlay speaker — same playback + state as the row speaker. */}
@@ -220,7 +232,12 @@ function StepCard({ taskId, step, index, isActive, onActivate, onDeactivate }: S
       ) : null}
 
       {isImage && visualUri ? (
-        <PhotoViewer uri={visualUri} visible={photoVisible} onClose={() => setPhotoVisible(false)} />
+        <PhotoViewer
+          uri={visualUri}
+          cacheKey={visual?.assetId ?? ''}
+          visible={photoVisible}
+          onClose={() => setPhotoVisible(false)}
+        />
       ) : null}
 
       {isVideo ? (

@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useMediaDownloadUrl } from '../../features/media/hooks/useMedia';
 import { useTaskSteps } from '../../features/tasks/hooks/useTaskApi';
 import type { Category, Task } from '../api/canplanTypes';
+import CachedImage from './CachedImage';
 import { colors, radius, shadow, spacing, typography } from '../theme/tokens';
 
 interface TaskCardProps {
@@ -50,10 +51,12 @@ export default function TaskCard({
     <View style={styles.taskCard}>
       {coverImageQuery.data?.downloadUrl ? (
         <View style={styles.coverImageWrap}>
-          <Image
+          <CachedImage
             accessibilityLabel={`${task.title} task photo`}
-            source={{ uri: coverImageQuery.data.downloadUrl }}
+            uri={coverImageQuery.data.downloadUrl}
+            cacheKey={task.coverImageAssetId ?? ''}
             style={styles.coverImage}
+            contentFit="cover"
           />
           <View style={[styles.coverCategoryBar, { backgroundColor: categoryColor }]} />
         </View>

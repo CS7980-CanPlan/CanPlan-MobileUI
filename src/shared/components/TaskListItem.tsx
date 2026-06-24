@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useMediaDownloadUrl } from '../../features/media/hooks/useMedia';
 import type { Category, Task } from '../api/canplanTypes';
+import CachedImage from './CachedImage';
 import { colors, radius, shadow, spacing, typography } from '../theme/tokens';
 
 interface TaskListItemProps {
@@ -24,10 +25,12 @@ export default function TaskListItem({ task, category, onPress }: TaskListItemPr
       style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
     >
       {coverUri ? (
-        <Image
+        <CachedImage
           accessibilityLabel={`${task.title} cover photo`}
-          source={{ uri: coverUri }}
+          uri={coverUri}
+          cacheKey={task.coverImageAssetId ?? ''}
           style={styles.cover}
+          contentFit="cover"
         />
       ) : (
         <View style={[styles.cover, styles.coverPlaceholder, { backgroundColor: placeholderColor }]}>

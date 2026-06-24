@@ -12,7 +12,6 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -44,6 +43,7 @@ import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
 import type { Category, MediaAsset, MediaType, RepeatUnit, TaskScheduleInput } from '../../shared/api/canplanTypes';
 import BackButton from '../../shared/components/BackButton';
+import CachedImage from '../../shared/components/CachedImage';
 import ConfirmDialog from '../../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
@@ -1039,7 +1039,13 @@ export default function CreateTaskScreen() {
           <Text style={styles.sectionLabel}>Task photo</Text>
           {taskCoverUri ? (
             <View style={styles.coverPreview}>
-              <Image accessibilityLabel="Selected task photo" source={{ uri: taskCoverUri }} style={styles.coverImage} />
+              <CachedImage
+                accessibilityLabel="Selected task photo"
+                uri={taskCoverUri ?? null}
+                cacheKey={coverImage?.uri ?? existingTaskQuery.data?.coverImageAssetId ?? ''}
+                style={styles.coverImage}
+                contentFit="cover"
+              />
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Remove task photo"
