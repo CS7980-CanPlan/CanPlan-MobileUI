@@ -8,11 +8,10 @@ import {
 } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -44,6 +43,7 @@ import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
 import type { Category, MediaAsset, MediaType, RepeatUnit, TaskScheduleInput } from '../../shared/api/canplanTypes';
 import BackButton from '../../shared/components/BackButton';
+import CachedImage from '../../shared/components/CachedImage';
 import ConfirmDialog from '../../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
@@ -111,6 +111,20 @@ function mediaDisplay(type?: MediaType): MediaDisplay {
     default:
       return { icon: 'image-outline', label: 'Photo' };
   }
+}
+
+// One indicator per kind of media a step carries: the single visual (photo OR
+// video) and, independently, an audio note — so a photo+audio step shows two.
+function stepMediaIndicators(mediaAssets: MediaAsset[]): MediaDisplay[] {
+  const indicators: MediaDisplay[] = [];
+  const visual = mediaAssets.find((asset) => asset.type === 'IMAGE' || asset.type === 'VIDEO');
+  if (visual) {
+    indicators.push(mediaDisplay(visual.type));
+  }
+  if (mediaAssets.some((asset) => asset.type === 'AUDIO')) {
+    indicators.push(mediaDisplay('AUDIO'));
+  }
+  return indicators;
 }
 
 function contentTypeForImage(image: SelectedImage): string {
@@ -362,6 +376,10 @@ export default function CreateTaskScreen() {
 
   const [title, setTitle] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
+  // Drives the caret on the (multi-line) task-name field: jump to the end on
+  // focus, snap back to the start on blur, otherwise leave it user-controlled.
+  const [titleSelection, setTitleSelection] = useState<{ start: number; end: number }>();
+  const titleCaretModeRef = useRef<'free' | 'end' | 'start'>('free');
   const [description, setDescription] = useState('');
   const [savedDescription, setSavedDescription] = useState('');
   const [descEditorVisible, setDescEditorVisible] = useState(false);
@@ -568,6 +586,12 @@ export default function CreateTaskScreen() {
     })();
   };
 
+  // Tapping any empty area (header padding, gaps between cards, card whitespace)
+  // deactivates the task-name field — which also scrolls the name back to start.
+  const dismissTitleEditing = () => {
+    titleInputRef.current?.blur();
+  };
+
   UNSTABLE_usePreventRemove(
     shouldConfirmDraftDiscard && !exitDestination,
     () => {
@@ -611,7 +635,14 @@ export default function CreateTaskScreen() {
     } else {
       navigation.navigate('Home');
     }
-  }, [exitDestination, isBusy, navigation, shouldConfirmDraftDiscard]);
+  }, [
+    exitDestination,
+    fixedCategoryId,
+    fixedCategoryName,
+    isBusy,
+    navigation,
+    shouldConfirmDraftDiscard,
+  ]);
 
   const uploadCoverImage = async (id: string, image: SelectedImage) => {
     const contentType = contentTypeForImage(image);
@@ -778,7 +809,9 @@ export default function CreateTaskScreen() {
         setCoverNeedsUpload(false);
       }
       setIsCreatedTaskDraft(false);
-      setExitDestination('all-tasks');
+      // New task → land on AllTasks; editing an existing task → go back to
+      // wherever the user came from (TaskDetail, TaskView, etc.).
+      setExitDestination(existingTaskId ? 'back' : 'all-tasks');
     } catch (error) {
       setInlineError(errorMessage(error));
     } finally {
@@ -897,6 +930,11 @@ export default function CreateTaskScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable
+          accessible={false}
+          onPress={dismissTitleEditing}
+          style={StyleSheet.absoluteFill}
+        />
         <BackButton onPress={handleBack} variant="dark" />
         <Text style={styles.headerTitle}>{existingTaskId ? 'Edit Task' : 'New Task'}</Text>
         <Pressable
@@ -929,6 +967,11 @@ export default function CreateTaskScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        <Pressable
+          accessible={false}
+          onPress={dismissTitleEditing}
+          style={StyleSheet.absoluteFill}
+        />
         {inlineError ? (
           <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorBanner}>
             <Ionicons name="alert-circle" size={20} color={colors.danger} />
@@ -943,12 +986,32 @@ export default function CreateTaskScreen() {
             accessibilityLabel="Task name"
             editable={!isBusy}
             value={title}
-            onChangeText={setTitle}
+            // Keep the name a single logical line — wrap visually, but drop any
+            // newline the user might enter on the multi-line field.
+            onChangeText={(text) => setTitle(text.replace(/\n/g, ''))}
             placeholder="e.g. Make breakfast"
             placeholderTextColor={colors.disabled}
             style={styles.taskTitleInput}
-            returnKeyType="done"
-            onBlur={handleTaskNameBlur}
+            multiline
+            scrollEnabled
+            textAlignVertical="top"
+            selection={titleSelection}
+            onFocus={() => {
+              titleCaretModeRef.current = 'end';
+              const end = title.length;
+              setTitleSelection({ start: end, end });
+            }}
+            onSelectionChange={() => {
+              if (titleCaretModeRef.current === 'end') {
+                titleCaretModeRef.current = 'free';
+                setTitleSelection(undefined);
+              }
+            }}
+            onBlur={() => {
+              titleCaretModeRef.current = 'start';
+              setTitleSelection({ start: 0, end: 0 });
+              handleTaskNameBlur();
+            }}
           />
         </View>
 
@@ -976,7 +1039,13 @@ export default function CreateTaskScreen() {
           <Text style={styles.sectionLabel}>Task photo</Text>
           {taskCoverUri ? (
             <View style={styles.coverPreview}>
-              <Image accessibilityLabel="Selected task photo" source={{ uri: taskCoverUri }} style={styles.coverImage} />
+              <CachedImage
+                accessibilityLabel="Selected task photo"
+                uri={taskCoverUri ?? null}
+                cacheKey={coverImage?.uri ?? existingTaskQuery.data?.coverImageAssetId ?? ''}
+                style={styles.coverImage}
+                contentFit="cover"
+              />
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Remove task photo"
@@ -1056,15 +1125,27 @@ export default function CreateTaskScreen() {
                   </View>
                   <View style={styles.stepCopy}>
                     <Text style={styles.stepText}>{step.text}</Text>
-                    {step.mediaAssets[0] ? (() => {
-                      const { icon, label } = mediaDisplay(step.mediaAssets[0].type);
+                    {(() => {
+                      const indicators = stepMediaIndicators(step.mediaAssets);
+                      if (indicators.length === 0) {
+                        return null;
+                      }
                       return (
-                        <View style={styles.photoIndicator}>
-                          <Ionicons name={icon} size={13} color={colors.textMuted} />
-                          <Text style={styles.photoIndicatorText}>{label}</Text>
+                        <View style={styles.mediaIndicatorRow}>
+                          {indicators.map((item, indicatorIndex) => (
+                            <Fragment key={item.label}>
+                              {indicatorIndex > 0 ? (
+                                <Ionicons name="add" size={14} color={colors.textMuted} />
+                              ) : null}
+                              <View style={styles.photoIndicator}>
+                                <Ionicons name={item.icon} size={13} color={colors.textMuted} />
+                                <Text style={styles.photoIndicatorText}>{item.label}</Text>
+                              </View>
+                            </Fragment>
+                          ))}
                         </View>
                       );
-                    })() : null}
+                    })()}
                   </View>
                   <Pressable
                     accessibilityRole="button"
@@ -1425,6 +1506,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
     paddingVertical: spacing.sm,
+    minHeight: 54,
+    // Up to ~3 lines (38 × 3 + vertical padding); longer names scroll in-place.
+    maxHeight: 130,
   },
   addTaskPhoto: {
     minHeight: 184,
@@ -1554,11 +1638,17 @@ const styles = StyleSheet.create({
     ...typography.bodyStrong,
     color: colors.text,
   },
+  mediaIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   photoIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    marginTop: spacing.xs,
   },
   photoIndicatorText: {
     ...typography.caption,

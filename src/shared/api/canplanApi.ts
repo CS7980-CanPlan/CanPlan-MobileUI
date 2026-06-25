@@ -33,6 +33,7 @@ import type {
   MediaDownloadTarget,
   MediaUploadTarget,
   PageInput,
+  ReorderTaskStepsInput,
   SetAssignmentStepCompletionInput,
   SupportLink,
   Task,
@@ -373,6 +374,14 @@ export const canPlanApi = {
       { input },
     );
     return data.deleteTaskStep;
+  },
+
+  async reorderTaskSteps(input: ReorderTaskStepsInput): Promise<TaskStep[]> {
+    const data = await graphqlRequest<{ reorderTaskSteps: TaskStep[] }, { input: ReorderTaskStepsInput }>(
+      operations.REORDER_TASK_STEPS,
+      { input },
+    );
+    return data.reorderTaskSteps;
   },
 
   async deleteTask(taskId: string): Promise<Task | null> {

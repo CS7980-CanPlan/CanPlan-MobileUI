@@ -1,12 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import DraggableFlatList, {
-  type RenderItemParams,
-  ScaleDecorator,
-} from 'react-native-draggable-flatlist';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMyCategories } from '../../features/categories/hooks/useCategories';
@@ -24,6 +37,77 @@ import ConfirmDialog from '../../shared/components/ConfirmDialog';
 import { colors, radius, shadow, spacing, typography } from '../../shared/theme/tokens';
 
 type ManageTasksNavigation = NativeStackNavigationProp<MainStackParamList, 'ManageTasks'>;
+type TaskPositions = Record<string, number>;
+
+const MANAGE_TASK_ROW_SLOT_HEIGHT = 64;
+const REORDER_ANIMATION_DURATION_MS = 260;
+// Wait for the confirm dialog to finish closing before the success toast shows,
+// so the two don't overlap. Raise this number to make the toast appear later.
+const MOVE_SUCCESS_TOAST_DELAY_MS = 400;
+// How long the success toast stays on screen.
+const TOAST_VISIBLE_MS = 1800;
+
+function orderTasksByIds(tasks: Task[], orderedIds: string[]) {
+  if (orderedIds.length === 0) return tasks;
+
+  const byId = new Map(tasks.map((task) => [task.taskId, task]));
+  const used = new Set<string>();
+  const ordered: Task[] = [];
+
+  for (const id of orderedIds) {
+    const task = byId.get(id);
+    if (task) {
+      ordered.push(task);
+      used.add(id);
+    }
+  }
+
+  for (const task of tasks) {
+    if (!used.has(task.taskId)) ordered.push(task);
+  }
+
+  return ordered;
+}
+
+function makeTaskPositions(tasks: Task[]) {
+  return tasks.reduce<TaskPositions>((positions, task, index) => {
+    positions[task.taskId] = index;
+    return positions;
+  }, {});
+}
+
+function orderedIdsFromPositions(positions: TaskPositions) {
+  return Object.entries(positions)
+    .sort(([, a], [, b]) => a - b)
+    .map(([taskId]) => taskId);
+}
+
+function clampIndex(value: number, max: number) {
+  'worklet';
+  return Math.min(Math.max(value, 0), max);
+}
+
+function movePosition(positions: TaskPositions, from: number, to: number) {
+  'worklet';
+
+  if (from === to) return positions;
+
+  const next = { ...positions };
+  const movingDown = to > from;
+
+  for (const taskId in positions) {
+    const position = positions[taskId];
+    if (position === from) {
+      next[taskId] = to;
+    } else if (movingDown && position > from && position <= to) {
+      next[taskId] = position - 1;
+    } else if (!movingDown && position >= to && position < from) {
+      next[taskId] = position + 1;
+    }
+  }
+
+  return next;
+}
 
 export default function ManageTasksScreen() {
   const navigation = useNavigation<ManageTasksNavigation>();
@@ -33,7 +117,13 @@ export default function ManageTasksScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
+  // The category awaiting move confirmation, and a transient success toast.
+  const [pendingCategory, setPendingCategory] = useState<{ categoryId: string; name: string }>();
+  const [toastMessage, setToastMessage] = useState<string>();
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastDelayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [orderedTasks, setOrderedTasks] = useState<Task[]>([]);
+  const latestTaskOrderRef = useRef<string[]>([]);
   const tasksQuery = useTasksByOwner(ownerId);
   const categoriesQuery = useMyCategories(Boolean(ownerId));
   const deleteTaskMutation = useDeleteTask();
@@ -69,23 +159,40 @@ export default function ManageTasksScreen() {
   // merging in any additions/removals from the server.
   useEffect(() => {
     setOrderedTasks((prev) => {
-      if (prev.length === 0) return remoteTasks;
-      const remoteIds = new Set(remoteTasks.map((t) => t.taskId));
-      const kept = prev.filter((t) => remoteIds.has(t.taskId));
+      if (remoteTasks.length === 0) {
+        latestTaskOrderRef.current = [];
+        return prev.length === 0 ? prev : [];
+      }
+
+      const preferredOrder =
+        latestTaskOrderRef.current.length > 0
+          ? latestTaskOrderRef.current
+          : prev.map((task) => task.taskId);
+      const remoteById = new Map(remoteTasks.map((task) => [task.taskId, task]));
+      const kept = preferredOrder
+        .map((taskId) => remoteById.get(taskId))
+        .filter((task): task is Task => Boolean(task));
       const seen = new Set(kept.map((t) => t.taskId));
       const additions = remoteTasks.filter((t) => !seen.has(t.taskId));
-      return [...kept, ...additions];
+      const next = [...kept, ...additions];
+      latestTaskOrderRef.current = next.map((task) => task.taskId);
+
+      if (next.length === prev.length && next.every((task, index) => task === prev[index])) {
+        return prev;
+      }
+
+      return next;
     });
   }, [remoteTasks]);
 
-  const toggleSelected = (taskId: string) => {
+  const toggleSelected = useCallback((taskId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(taskId)) next.delete(taskId);
       else next.add(taskId);
       return next;
     });
-  };
+  }, []);
 
   const selectedCount = selectedIds.size;
   const actionsDisabled =
@@ -101,7 +208,13 @@ export default function ManageTasksScreen() {
       for (const taskId of selectedIds) {
         await deleteTaskMutation.mutateAsync(taskId);
       }
-      setOrderedTasks((prev) => prev.filter((t) => !selectedIds.has(t.taskId)));
+      setOrderedTasks((prev) => {
+        const next = orderTasksByIds(prev, latestTaskOrderRef.current).filter(
+          (t) => !selectedIds.has(t.taskId),
+        );
+        latestTaskOrderRef.current = next.map((task) => task.taskId);
+        return next;
+      });
       setSelectedIds(new Set());
       setConfirmDelete(false);
       navigation.navigate('AllTasks');
@@ -113,52 +226,61 @@ export default function ManageTasksScreen() {
     }
   };
 
-  const handleMoveToCategory = async (categoryId: string) => {
-    setCategorySheetVisible(false);
-    if (selectedCount === 0 || updateTaskMutation.isPending) return;
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(undefined);
+      toastTimeoutRef.current = null;
+    }, TOAST_VISIBLE_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      if (toastDelayTimeoutRef.current) clearTimeout(toastDelayTimeoutRef.current);
+    },
+    [],
+  );
+
+  // Picking a category no longer moves immediately — ask the user to confirm first.
+  const requestMoveToCategory = useCallback(
+    (categoryId: string) => {
+      const name = categories.find((c) => c.categoryId === categoryId)?.name ?? 'this category';
+      setCategorySheetVisible(false);
+      setPendingCategory({ categoryId, name });
+    },
+    [categories],
+  );
+
+  const confirmMoveToCategory = async () => {
+    if (!pendingCategory || selectedCount === 0 || updateTaskMutation.isPending) return;
+    const { categoryId, name } = pendingCategory;
+    const movedCount = selectedCount;
     try {
       for (const taskId of selectedIds) {
         await updateTaskMutation.mutateAsync({ taskId, categoryId });
       }
       setSelectedIds(new Set());
+      setPendingCategory(undefined);
+      // Let the confirm dialog finish dismissing before the toast appears.
+      const message = `Added ${movedCount} ${movedCount === 1 ? 'task' : 'tasks'} to ${name}`;
+      if (toastDelayTimeoutRef.current) clearTimeout(toastDelayTimeoutRef.current);
+      toastDelayTimeoutRef.current = setTimeout(() => {
+        showToast(message);
+        toastDelayTimeoutRef.current = null;
+      }, MOVE_SUCCESS_TOAST_DELAY_MS);
     } catch (err) {
       setIdentityError(
         err instanceof Error ? err.message : 'Could not move the selected tasks.',
       );
+      setPendingCategory(undefined);
     }
   };
 
-  const renderItem = ({ item, drag, isActive }: RenderItemParams<Task>) => {
-    const selected = selectedIds.has(item.taskId);
-    return (
-      <ScaleDecorator>
-        <View style={[styles.row, isActive ? styles.rowActive : null]}>
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: selected }}
-            accessibilityLabel={`Select ${item.title}`}
-            onPress={() => toggleSelected(item.taskId)}
-            hitSlop={8}
-            style={[styles.checkbox, selected ? styles.checkboxChecked : null]}
-          >
-            {selected ? <Ionicons name="checkmark" size={18} color={colors.onPrimary} /> : null}
-          </Pressable>
-          <Text numberOfLines={1} style={styles.rowTitle}>
-            {item.title}
-          </Text>
-          <Pressable
-            accessibilityLabel={`Drag ${item.title} to reorder`}
-            onLongPress={drag}
-            delayLongPress={120}
-            hitSlop={8}
-            style={styles.dragHandle}
-          >
-            <Ionicons name="reorder-three" size={28} color={colors.textMuted} />
-          </Pressable>
-        </View>
-      </ScaleDecorator>
-    );
-  };
+  const handleOrderChange = useCallback((positions: TaskPositions) => {
+    latestTaskOrderRef.current = orderedIdsFromPositions(positions);
+  }, []);
 
   return (
     <View style={styles.root}>
@@ -191,11 +313,11 @@ export default function ManageTasksScreen() {
           <Text style={styles.loadingText}>Loading tasks…</Text>
         </View>
       ) : (
-        <DraggableFlatList
-          data={orderedTasks}
-          keyExtractor={(item) => item.taskId}
-          onDragEnd={({ data }) => setOrderedTasks(data)}
-          renderItem={renderItem}
+        <SortableTaskList
+          tasks={orderedTasks}
+          selectedIds={selectedIds}
+          onToggle={toggleSelected}
+          onOrderChange={handleOrderChange}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: insets.bottom + 96 + spacing.xl },
@@ -242,11 +364,184 @@ export default function ManageTasksScreen() {
         onCancel={() => {
           if (!updateTaskMutation.isPending) setCategorySheetVisible(false);
         }}
-        onSelect={(categoryId) => {
-          void handleMoveToCategory(categoryId);
+        onSelect={requestMoveToCategory}
+      />
+
+      <ConfirmDialog
+        visible={Boolean(pendingCategory)}
+        title={`Move ${selectedCount} ${selectedCount === 1 ? 'task' : 'tasks'}?`}
+        message={
+          pendingCategory
+            ? `Add the selected ${selectedCount === 1 ? 'task' : 'tasks'} to “${pendingCategory.name}”.`
+            : undefined
+        }
+        confirmLabel={updateTaskMutation.isPending ? 'Moving…' : 'Move'}
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          void confirmMoveToCategory();
+        }}
+        onCancel={() => {
+          // Cancel returns to the category picker rather than the manage screen.
+          if (!updateTaskMutation.isPending) {
+            setPendingCategory(undefined);
+            setCategorySheetVisible(true);
+          }
         }}
       />
+
+      {toastMessage ? (
+        <View pointerEvents="none" style={styles.toastOverlay}>
+          <View style={styles.toastCard}>
+            <Ionicons name="checkmark-circle" size={30} color={colors.success} />
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      ) : null}
     </View>
+  );
+}
+
+interface SortableTaskListProps {
+  tasks: Task[];
+  selectedIds: Set<string>;
+  onToggle: (taskId: string) => void;
+  onOrderChange: (positions: TaskPositions) => void;
+  contentContainerStyle: StyleProp<ViewStyle>;
+}
+
+function SortableTaskList({
+  tasks,
+  selectedIds,
+  onToggle,
+  onOrderChange,
+  contentContainerStyle,
+}: SortableTaskListProps) {
+  const [scrollEnabled, setScrollEnabled] = useState(true);
+  const positions = useSharedValue<TaskPositions>(makeTaskPositions(tasks));
+  const taskIdsKey = useMemo(() => tasks.map((task) => task.taskId).join('|'), [tasks]);
+
+  useEffect(() => {
+    const nextPositions = makeTaskPositions(tasks);
+    positions.value = nextPositions;
+    onOrderChange(nextPositions);
+  }, [onOrderChange, positions, taskIdsKey, tasks]);
+
+  return (
+    <ScrollView
+      style={styles.list}
+      contentContainerStyle={contentContainerStyle}
+      scrollEnabled={scrollEnabled}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={[styles.listItemsStack, { height: tasks.length * MANAGE_TASK_ROW_SLOT_HEIGHT }]}>
+        {tasks.map((task) => (
+          <SortableTaskRow
+            key={task.taskId}
+            item={task}
+            positions={positions}
+            itemCount={tasks.length}
+            selected={selectedIds.has(task.taskId)}
+            onToggle={onToggle}
+            onOrderChange={onOrderChange}
+            setScrollEnabled={setScrollEnabled}
+          />
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+interface SortableTaskRowProps {
+  item: Task;
+  positions: SharedValue<TaskPositions>;
+  itemCount: number;
+  selected: boolean;
+  onToggle: (taskId: string) => void;
+  onOrderChange: (positions: TaskPositions) => void;
+  setScrollEnabled: (enabled: boolean) => void;
+}
+
+function SortableTaskRow({
+  item,
+  positions,
+  itemCount,
+  selected,
+  onToggle,
+  onOrderChange,
+  setScrollEnabled,
+}: SortableTaskRowProps) {
+  const isDragging = useSharedValue(false);
+  const dragTop = useSharedValue(0);
+  const startTop = useSharedValue(0);
+
+  const gesture = Gesture.Pan()
+    .activateAfterLongPress(120)
+    .shouldCancelWhenOutside(false)
+    .onStart(() => {
+      const currentPosition = positions.value[item.taskId] ?? 0;
+      startTop.value = currentPosition * MANAGE_TASK_ROW_SLOT_HEIGHT;
+      dragTop.value = startTop.value;
+      isDragging.value = true;
+      runOnJS(setScrollEnabled)(false);
+    })
+    .onUpdate((event) => {
+      const nextTop = startTop.value + event.translationY;
+      const nextPosition = clampIndex(
+        Math.round(nextTop / MANAGE_TASK_ROW_SLOT_HEIGHT),
+        itemCount - 1,
+      );
+      const currentPosition = positions.value[item.taskId] ?? 0;
+
+      dragTop.value = nextTop;
+      if (nextPosition !== currentPosition) {
+        positions.value = movePosition(positions.value, currentPosition, nextPosition);
+      }
+    })
+    .onFinalize(() => {
+      const finalTop = (positions.value[item.taskId] ?? 0) * MANAGE_TASK_ROW_SLOT_HEIGHT;
+      dragTop.value = withTiming(finalTop, { duration: REORDER_ANIMATION_DURATION_MS }, () => {
+        isDragging.value = false;
+        runOnJS(setScrollEnabled)(true);
+        runOnJS(onOrderChange)({ ...positions.value });
+      });
+    });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const restingTop = (positions.value[item.taskId] ?? 0) * MANAGE_TASK_ROW_SLOT_HEIGHT;
+
+    return {
+      top: isDragging.value
+        ? dragTop.value
+        : withTiming(restingTop, { duration: REORDER_ANIMATION_DURATION_MS }),
+      zIndex: isDragging.value ? 10 : 0,
+    };
+  });
+
+  return (
+    <Animated.View style={[styles.row, animatedStyle]}>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: selected }}
+        accessibilityLabel={`Select ${item.title}`}
+        onPress={() => onToggle(item.taskId)}
+        hitSlop={8}
+        style={[styles.checkbox, selected ? styles.checkboxChecked : null]}
+      >
+        {selected ? <Ionicons name="checkmark" size={18} color={colors.onPrimary} /> : null}
+      </Pressable>
+      <Text numberOfLines={1} style={styles.rowTitle}>
+        {item.title}
+      </Text>
+      <GestureDetector gesture={gesture}>
+        <Pressable
+          accessibilityLabel={`Drag ${item.title} to reorder`}
+          hitSlop={8}
+          style={styles.dragHandle}
+        >
+          <Ionicons name="reorder-three" size={28} color={colors.textMuted} />
+        </Pressable>
+      </GestureDetector>
+    </Animated.View>
   );
 }
 
@@ -335,21 +630,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
   },
+  list: {
+    backgroundColor: colors.bg,
+  },
+  listItemsStack: {
+    position: 'relative',
+  },
   row: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.md,
+    minHeight: MANAGE_TASK_ROW_SLOT_HEIGHT - spacing.md,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     ...shadow.card,
-  },
-  rowActive: {
-    ...shadow.cardStrong,
   },
   checkbox: {
     width: 26,
@@ -400,5 +702,29 @@ const styles = StyleSheet.create({
   },
   bottomActionLabelDisabled: {
     color: colors.disabled,
+  },
+  // Transient "added" confirmation — a smaller, 80%-opacity version of the
+  // confirm-dialog card, centred and non-interactive.
+  toastOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  toastCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    maxWidth: 300,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    opacity: 0.8,
+    ...shadow.cardStrong,
+  },
+  toastText: {
+    ...typography.bodyStrong,
+    color: colors.text,
   },
 });

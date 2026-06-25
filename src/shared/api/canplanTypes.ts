@@ -272,6 +272,16 @@ export interface DeleteTaskStepInput {
   stepId: string;
 }
 
+export interface ReorderTaskStepInput {
+  stepId: string;
+  order: number;
+}
+
+export interface ReorderTaskStepsInput {
+  taskId: string;
+  steps: ReorderTaskStepInput[];
+}
+
 export interface CreateAssignmentInput {
   taskId: string;
   userId: string;

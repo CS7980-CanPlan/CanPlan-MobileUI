@@ -13,6 +13,7 @@ import { AppProviders } from './src/app/AppProviders';
 import { useSession } from './src/app/SessionContext';
 import { useCurrentUser } from './src/features/auth';
 import { useMyProfile } from './src/features/users/hooks/useMyProfile';
+import { readSimpleMode } from './src/features/users/hooks/useSimpleMode';
 import CreateAccountScreen from './src/screens/auth/CreateAccountScreen';
 import ForgotPasswordResetScreen from './src/screens/auth/ForgotPasswordResetScreen';
 import ForgotPasswordScreen from './src/screens/auth/ForgotPasswordScreen';
@@ -38,7 +39,7 @@ const Stack = createNativeStackNavigator();
  *
  *  - No Cognito user and not in guest mode → Auth stack (SignIn et al.)
  *  - Signed-in real user but profile not yet created → Onboarding (name)
- *  - Signed-in with profile, OR guest mode → Main stack (Home)
+ *  - Signed-in with profile, OR guest mode → Main stack
  *
  * Whenever any of these states change (sign in, sign out, profile created,
  * Skip pressed), the next render picks the matching stack — no manual
@@ -64,9 +65,13 @@ function RootStack() {
 
   const isAuthed = !!currentUser || isGuest;
   const needsOnboarding = !!currentUser && !isGuest && profile == null;
+  const simpleMode = readSimpleMode(profile?.accessibilitySettings);
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={simpleMode ? 'AllTasks' : 'Home'}
+    >
       {!isAuthed ? (
         <>
           <Stack.Screen name="SignIn" component={SignInScreen} />
