@@ -1,4 +1,4 @@
-/** GraphQL documents for the CanPlan schema dated 2026-06-22. */
+/** GraphQL documents for the CanPlan schema. */
 
 const USER_PROFILE_FIELDS = /* GraphQL */ `
   userId role displayName email organizationId accessibilitySettings defaultCategoryId createdAt updatedAt
@@ -21,17 +21,26 @@ const TASK_STEP_FIELDS = /* GraphQL */ `
 `;
 
 const TASK_FIELDS = /* GraphQL */ `
-  taskId ownerId title categoryId description scheduleRule
-  schedule { repeatEvery repeatUnit firstOccurrenceAt timezone enabled }
-  nextOccurrenceAt notificationEnabled coverImageAssetId createdAt updatedAt
+  taskId ownerId title categoryId order description coverImageAssetId createdAt updatedAt
 `;
 
-const ASSIGNMENT_FIELDS = /* GraphQL */ `
-  assignmentId taskId userId assignedBy dueDate recurrence scheduleRule status assignedAt createdAt updatedAt
+const TASK_ASSIGNMENT_FIELDS = /* GraphQL */ `
+  assignmentId taskId userId assignedBy scheduleType scheduledFor scheduleRule
+  startDate endDate startTime timezone active endedAt assignedAt createdAt updatedAt
 `;
 
-const ASSIGNMENT_STEP_FIELDS = /* GraphQL */ `
-  assignmentId taskId stepId order text completed completedAt createdAt updatedAt
+const TASK_INSTANCE_FIELDS = /* GraphQL */ `
+  instanceId assignmentId taskId userId scheduledDate scheduledTime scheduledFor timezone
+  status startedAt completedAt skippedAt cancelledAt isException createdAt updatedAt
+`;
+
+const TASK_INSTANCE_STEP_FIELDS = /* GraphQL */ `
+  instanceId assignmentId taskId stepId order text completed completedAt createdAt updatedAt
+`;
+
+const TASK_INSTANCE_VIEW_FIELDS = /* GraphQL */ `
+  instanceId assignmentId taskId userId title scheduledDate scheduledTime scheduledFor
+  timezone status isVirtual isException
 `;
 
 export const HEALTH_CHECK = /* GraphQL */ `
@@ -104,19 +113,28 @@ export const LIST_TASKS_BY_CATEGORY = /* GraphQL */ `
   }
 `;
 
-export const LIST_ASSIGNMENTS_FOR_USER = /* GraphQL */ `
-  query ListAssignmentsForUser($userId: ID!, $limit: Int, $nextToken: String) {
-    listAssignmentsForUser(userId: $userId, limit: $limit, nextToken: $nextToken) {
-      items { ${ASSIGNMENT_FIELDS} }
+export const LIST_TASK_ASSIGNMENTS_FOR_USER = /* GraphQL */ `
+  query ListTaskAssignmentsForUser($userId: ID!, $limit: Int, $nextToken: String) {
+    listTaskAssignmentsForUser(userId: $userId, limit: $limit, nextToken: $nextToken) {
+      items { ${TASK_ASSIGNMENT_FIELDS} }
       nextToken
     }
   }
 `;
 
-export const LIST_ASSIGNMENT_STEPS = /* GraphQL */ `
-  query ListAssignmentSteps($userId: ID!, $assignmentId: ID!, $limit: Int, $nextToken: String) {
-    listAssignmentSteps(userId: $userId, assignmentId: $assignmentId, limit: $limit, nextToken: $nextToken) {
-      items { ${ASSIGNMENT_STEP_FIELDS} }
+export const GET_TASK_INSTANCE_VIEWS = /* GraphQL */ `
+  query GetTaskInstanceViews($userId: ID!, $startDate: String!, $endDate: String!) {
+    getTaskInstanceViews(userId: $userId, startDate: $startDate, endDate: $endDate) {
+      items { ${TASK_INSTANCE_VIEW_FIELDS} }
+      nextToken
+    }
+  }
+`;
+
+export const LIST_TASK_INSTANCE_STEPS = /* GraphQL */ `
+  query ListTaskInstanceSteps($userId: ID!, $instanceId: ID!, $limit: Int, $nextToken: String) {
+    listTaskInstanceSteps(userId: $userId, instanceId: $instanceId, limit: $limit, nextToken: $nextToken) {
+      items { ${TASK_INSTANCE_STEP_FIELDS} }
       nextToken
     }
   }
@@ -236,27 +254,45 @@ export const DELETE_TASK = /* GraphQL */ `
   }
 `;
 
-export const CREATE_ASSIGNMENT = /* GraphQL */ `
-  mutation CreateAssignment($input: CreateAssignmentInput!) {
-    createAssignment(input: $input) { ${ASSIGNMENT_FIELDS} }
+export const CREATE_TASK_ASSIGNMENT = /* GraphQL */ `
+  mutation CreateTaskAssignment($input: CreateTaskAssignmentInput!) {
+    createTaskAssignment(input: $input) { ${TASK_ASSIGNMENT_FIELDS} }
   }
 `;
 
-export const UPDATE_ASSIGNMENT_STATUS = /* GraphQL */ `
-  mutation UpdateAssignmentStatus($input: UpdateAssignmentStatusInput!) {
-    updateAssignmentStatus(input: $input) { ${ASSIGNMENT_FIELDS} }
+export const START_TASK_INSTANCE = /* GraphQL */ `
+  mutation StartTaskInstance($input: StartTaskInstanceInput!) {
+    startTaskInstance(input: $input) { ${TASK_INSTANCE_FIELDS} }
   }
 `;
 
-export const SET_ASSIGNMENT_STEP_COMPLETION = /* GraphQL */ `
-  mutation SetAssignmentStepCompletion($input: SetAssignmentStepCompletionInput!) {
-    setAssignmentStepCompletion(input: $input) { ${ASSIGNMENT_STEP_FIELDS} }
+export const UPDATE_TASK_INSTANCE_STATUS = /* GraphQL */ `
+  mutation UpdateTaskInstanceStatus($input: UpdateTaskInstanceStatusInput!) {
+    updateTaskInstanceStatus(input: $input) { ${TASK_INSTANCE_FIELDS} }
   }
 `;
 
-export const DELETE_ASSIGNMENT = /* GraphQL */ `
-  mutation DeleteAssignment($input: DeleteAssignmentInput!) {
-    deleteAssignment(input: $input) { ${ASSIGNMENT_FIELDS} }
+export const SET_TASK_INSTANCE_STEP_COMPLETION = /* GraphQL */ `
+  mutation SetTaskInstanceStepCompletion($input: SetTaskInstanceStepCompletionInput!) {
+    setTaskInstanceStepCompletion(input: $input) { ${TASK_INSTANCE_STEP_FIELDS} }
+  }
+`;
+
+export const CANCEL_TASK_INSTANCE = /* GraphQL */ `
+  mutation CancelTaskInstance($input: CancelTaskInstanceInput!) {
+    cancelTaskInstance(input: $input) { ${TASK_INSTANCE_FIELDS} }
+  }
+`;
+
+export const END_TASK_ASSIGNMENT = /* GraphQL */ `
+  mutation EndTaskAssignment($input: EndTaskAssignmentInput!) {
+    endTaskAssignment(input: $input) { ${TASK_ASSIGNMENT_FIELDS} }
+  }
+`;
+
+export const DELETE_TASK_ASSIGNMENT = /* GraphQL */ `
+  mutation DeleteTaskAssignment($input: DeleteTaskAssignmentInput!) {
+    deleteTaskAssignment(input: $input) { ${TASK_ASSIGNMENT_FIELDS} }
   }
 `;
 

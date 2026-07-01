@@ -1,5 +1,5 @@
 /**
- * TypeScript contract for the CanPlan GraphQL schema (2026-06-22).
+ * TypeScript contract for the CanPlan GraphQL schema.
  *
  * These are the public client types, not generated transport types. In
  * particular, AWSJSON values are exposed as parsed JSON and encoded by
@@ -14,11 +14,27 @@ export type JsonValue =
 
 export type UserRole = 'PRIMARY_USER' | 'SUPPORT_PERSON' | 'ORG_ADMIN';
 export type SupportLinkStatus = 'PENDING' | 'ACTIVE' | 'REVOKED';
-export type AssignmentStatus = 'TO_DO' | 'OVERDUE' | 'COMPLETED' | 'SKIPPED';
-/** Values allowed by updateAssignmentStatus; OVERDUE is derived by the API. */
-export type PersistedAssignmentStatus = Exclude<AssignmentStatus, 'OVERDUE'>;
 export type MediaType = 'IMAGE' | 'AUDIO' | 'VIDEO';
-export type RepeatUnit = 'MINUTE' | 'HOUR' | 'DAY' | 'WEEK' | 'MONTH';
+
+/** How a TaskAssignment recurs: a single occurrence, or a recurrence rule. */
+export type TaskAssignmentScheduleType = 'ONE_TIME' | 'RECURRING';
+
+/**
+ * A TaskInstance's lifecycle. OVERDUE is a derived, read-only status; clients
+ * must never send it to a mutation.
+ */
+export type TaskInstanceStatus =
+  | 'TO_DO'
+  | 'IN_PROGRESS'
+  | 'OVERDUE'
+  | 'COMPLETED'
+  | 'SKIPPED'
+  | 'CANCELLED';
+/**
+ * Values accepted by updateTaskInstanceStatus. OVERDUE is derived; CANCELLED
+ * goes through cancelTaskInstance instead.
+ */
+export type PersistedTaskInstanceStatus = 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
 
 export interface UserProfile {
   userId: string;
@@ -53,24 +69,19 @@ export interface Category {
   updatedAt: string;
 }
 
-export interface TaskSchedule {
-  repeatEvery: number;
-  repeatUnit: RepeatUnit;
-  firstOccurrenceAt: string;
-  timezone: string;
-  enabled?: boolean | null;
-}
-
+/**
+ * A reusable task template. It carries NO scheduling data — scheduling lives on
+ * TaskAssignment, and per-occurrence status/completion on TaskInstance /
+ * TaskInstanceStep.
+ */
 export interface Task {
   taskId: string;
   ownerId: string;
   title: string;
   categoryId: string;
+  /** Per-owner global display order across all of the owner's tasks. */
+  order?: number | null;
   description?: string | null;
-  scheduleRule?: string | null;
-  schedule?: TaskSchedule | null;
-  nextOccurrenceAt?: string | null;
-  notificationEnabled?: boolean | null;
   coverImageAssetId?: string | null;
   createdAt: string;
   updatedAt?: string | null;
@@ -89,21 +100,73 @@ export interface TaskStep {
   updatedAt?: string | null;
 }
 
-export interface Assignment {
+/**
+ * The schedule rule binding a Task template to a user. ONE_TIME uses
+ * scheduledFor + timezone; RECURRING uses scheduleRule (an RRULE) + startDate +
+ * startTime + timezone (+ optional endDate).
+ */
+export interface TaskAssignment {
   assignmentId: string;
   taskId: string;
   userId: string;
   assignedBy?: string | null;
-  dueDate?: string | null;
-  recurrence?: string | null;
+  scheduleType: TaskAssignmentScheduleType;
+  scheduledFor?: string | null;
   scheduleRule?: string | null;
-  status: AssignmentStatus;
+  startDate?: string | null;
+  endDate?: string | null;
+  startTime?: string | null;
+  timezone: string;
+  active: boolean;
+  endedAt?: string | null;
   assignedAt: string;
   createdAt: string;
   updatedAt?: string | null;
 }
 
-export interface AssignmentStep {
+/** One concrete occurrence of a scheduled assignment, with status + lifecycle timestamps. */
+export interface TaskInstance {
+  instanceId: string;
+  assignmentId: string;
+  taskId: string;
+  userId: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  scheduledFor: string;
+  timezone: string;
+  status: TaskInstanceStatus;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  skippedAt?: string | null;
+  cancelledAt?: string | null;
+  isException?: boolean | null;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+/**
+ * A calendar cell from getTaskInstanceViews: a real TaskInstance overlaid on its
+ * scheduled slot, or a VIRTUAL occurrence with no real instance yet
+ * (isVirtual:true, instanceId:null).
+ */
+export interface TaskInstanceView {
+  instanceId?: string | null;
+  assignmentId: string;
+  taskId: string;
+  userId: string;
+  title: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  scheduledFor: string;
+  timezone: string;
+  status: TaskInstanceStatus;
+  isVirtual: boolean;
+  isException: boolean;
+}
+
+/** An immutable snapshot of one TaskStep captured into a TaskInstance when started. */
+export interface TaskInstanceStep {
+  instanceId: string;
   assignmentId: string;
   taskId: string;
   stepId: string;
@@ -112,7 +175,7 @@ export interface AssignmentStep {
   completed: boolean;
   completedAt?: string | null;
   createdAt: string;
-  updatedAt?: string | null;
+  updatedAt: string;
 }
 
 export interface MediaAsset {
@@ -211,14 +274,6 @@ export interface DeleteCategoryInput {
   categoryId: string;
 }
 
-export interface TaskScheduleInput {
-  repeatEvery: number;
-  repeatUnit: RepeatUnit;
-  firstOccurrenceAt: string;
-  timezone: string;
-  enabled?: boolean | null;
-}
-
 export interface CreateTaskStepNestedInput {
   text: string;
   description?: string | null;
@@ -228,10 +283,7 @@ export interface CreateTaskInput {
   title: string;
   categoryId?: string | null;
   description?: string | null;
-  scheduleRule?: string | null;
   steps?: CreateTaskStepNestedInput[] | null;
-  schedule?: TaskScheduleInput | null;
-  notificationEnabled?: boolean | null;
   coverImageS3Key?: string | null;
 }
 
@@ -240,9 +292,6 @@ export interface UpdateTaskInput {
   title?: string | null;
   categoryId?: string | null;
   description?: string | null;
-  scheduleRule?: string | null;
-  schedule?: TaskScheduleInput | null;
-  notificationEnabled?: boolean | null;
   coverImageS3Key?: string | null;
 }
 
@@ -282,29 +331,55 @@ export interface ReorderTaskStepsInput {
   steps: ReorderTaskStepInput[];
 }
 
-export interface CreateAssignmentInput {
+export interface CreateTaskAssignmentInput {
   taskId: string;
   userId: string;
   assignedBy?: string | null;
-  dueDate?: string | null;
-  recurrence?: string | null;
+  scheduleType: TaskAssignmentScheduleType;
+  /** ONE_TIME: the single occurrence's ISO datetime. */
+  scheduledFor?: string | null;
+  /** RECURRING: an RRULE string (FREQ required: DAILY/WEEKLY/MONTHLY/YEARLY). */
   scheduleRule?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  startTime?: string | null;
+  timezone: string;
 }
 
-export interface UpdateAssignmentStatusInput {
+export interface StartTaskInstanceInput {
   userId: string;
   assignmentId: string;
-  status: PersistedAssignmentStatus;
+  scheduledDate: string;
+  scheduledTime: string;
 }
 
-export interface SetAssignmentStepCompletionInput {
+export interface UpdateTaskInstanceStatusInput {
   userId: string;
-  assignmentId: string;
+  instanceId: string;
+  status: PersistedTaskInstanceStatus;
+}
+
+export interface SetTaskInstanceStepCompletionInput {
+  userId: string;
+  instanceId: string;
   stepId: string;
   completed: boolean;
 }
 
-export interface DeleteAssignmentInput {
+export interface CancelTaskInstanceInput {
+  userId: string;
+  assignmentId: string;
+  scheduledDate: string;
+  scheduledTime: string;
+}
+
+export interface EndTaskAssignmentInput {
+  userId: string;
+  assignmentId: string;
+  effectiveDate: string;
+}
+
+export interface DeleteTaskAssignmentInput {
   userId: string;
   assignmentId: string;
 }
