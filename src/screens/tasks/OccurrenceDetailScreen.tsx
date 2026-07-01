@@ -16,6 +16,7 @@ import {
   useSeriesActiveDates,
 } from '../../features/assignments/hooks/useSeriesActiveDates';
 import { occurrenceKey, useOccurrenceStatuses } from '../../features/assignments/occurrenceCompletion';
+import { assignmentFirstDate, describeRepeat } from '../../features/assignments/repeat';
 import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
 import type { TaskInstanceStatus } from '../../shared/api/canplanTypes';
@@ -38,6 +39,15 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 const todayISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+const formatLongDate = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 };
 
 export default function OccurrenceDetailScreen() {
@@ -115,23 +125,16 @@ export default function OccurrenceDetailScreen() {
         ? 'none'
         : 'occurrence';
 
-  const dateLabel = useMemo(() => {
-    const [y, m, d] = scheduledDate.split('-').map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }, [scheduledDate]);
+  const dateLabel = useMemo(() => formatLongDate(scheduledDate), [scheduledDate]);
+  const firstDate = assignmentFirstDate(assignment);
+  const firstDateLabel = firstDate ? formatLongDate(firstDate) : null;
+  const repeatLabel = assignment ? describeRepeat(assignment) : '—';
+  const isFuture = scheduledDate > todayISO();
 
-  const repeatLabel = assignment
-    ? isRecurring
-      ? 'Repeats'
-      : 'Does not repeat'
-    : '—';
-
-  const leaveOnSuccess = { onSuccess: () => navigation.goBack() };
+  // After a delete, jump back to the calendar (this screen may have been
+  // reached via the runner, so a single goBack would land on the now-stale
+  // runner instead of the calendar).
+  const leaveOnSuccess = { onSuccess: () => navigation.navigate('Calendar') };
   const onError = (error: Error) => setInlineError(error.message);
 
   const handleDeleteThis = () => {
@@ -177,6 +180,15 @@ export default function OccurrenceDetailScreen() {
             <Text style={styles.rowValue}>{dateLabel}</Text>
           </View>
           <View style={styles.divider} />
+          {isRecurring && firstDateLabel ? (
+            <>
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>First date</Text>
+                <Text style={styles.rowValue}>{firstDateLabel}</Text>
+              </View>
+              <View style={styles.divider} />
+            </>
+          ) : null}
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Time</Text>
             <Text style={styles.rowValue}>{scheduledTime}</Text>
@@ -195,7 +207,13 @@ export default function OccurrenceDetailScreen() {
 
         {deleteMode === 'none' ? (
           <Text style={styles.noteText}>
-            This occurrence isn’t active yet, so there’s nothing to change here.
+            This occurrence isn’t active yet, so there’s nothing to change here. Step-by-step
+            actions unlock on the day it’s scheduled.
+          </Text>
+        ) : isFuture ? (
+          <Text style={styles.noteText}>
+            This is a future occurrence — you can only delete it here. Step-by-step actions
+            unlock on the day it’s scheduled.
           </Text>
         ) : null}
 
