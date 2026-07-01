@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useCreateAssignment } from '../../features/assignments/hooks/useAssignments';
+import { REPEAT_OPTIONS, type RepeatValue } from '../../features/assignments/repeat';
 import type { MainStackParamList } from '../../navigation/types';
 import { getCurrentUserId } from '../../shared/api/authTokenProvider';
 import type { CreateTaskAssignmentInput } from '../../shared/api/canplanTypes';
@@ -27,31 +28,6 @@ type ScheduleAssignmentRoute = RouteProp<MainStackParamList, 'ScheduleAssignment
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-type RepeatValue =
-  | 'NONE'
-  | 'DAILY'
-  | 'WEEKLY'
-  | 'TWO_WEEKS'
-  | 'FOUR_WEEKS'
-  | 'MONTHLY'
-  | 'TWO_MONTHS'
-  | 'YEARLY'
-  | 'WEEKDAYS'
-  | 'WEEKENDS';
-
-// `rule` is the RRULE sent for RECURRING assignments; NONE is a ONE_TIME assignment.
-const REPEAT_OPTIONS: Array<{ value: RepeatValue; label: string; rule?: string }> = [
-  { value: 'NONE', label: 'None' },
-  { value: 'DAILY', label: 'Daily', rule: 'FREQ=DAILY;INTERVAL=1' },
-  { value: 'WEEKLY', label: 'Weekly', rule: 'FREQ=WEEKLY;INTERVAL=1' },
-  { value: 'TWO_WEEKS', label: 'Two Weeks', rule: 'FREQ=WEEKLY;INTERVAL=2' },
-  { value: 'FOUR_WEEKS', label: 'Four Weeks', rule: 'FREQ=WEEKLY;INTERVAL=4' },
-  { value: 'MONTHLY', label: 'Monthly', rule: 'FREQ=MONTHLY;INTERVAL=1' },
-  { value: 'TWO_MONTHS', label: 'Two Months', rule: 'FREQ=MONTHLY;INTERVAL=2' },
-  { value: 'YEARLY', label: 'Yearly', rule: 'FREQ=YEARLY;INTERVAL=1' },
-  { value: 'WEEKDAYS', label: 'Weekdays', rule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' },
-  { value: 'WEEKENDS', label: 'Weekends', rule: 'FREQ=WEEKLY;BYDAY=SA,SU' },
-];
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'));
