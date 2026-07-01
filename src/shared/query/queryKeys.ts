@@ -38,8 +38,10 @@ export const queryKeys = {
     mine: (limit?: number) => ['assignments', 'mine', limit] as const,
     user: (userId: string, limit?: number) =>
       ['assignments', 'user', userId, limit] as const,
-    steps: (userId: string, assignmentId: string, limit?: number) =>
-      ['assignments', 'steps', userId, assignmentId, limit] as const,
+    instanceViews: (userId: string, startDate: string, endDate: string) =>
+      ['assignments', 'instanceViews', userId, startDate, endDate] as const,
+    instanceSteps: (userId: string, instanceId: string, limit?: number) =>
+      ['assignments', 'instanceSteps', userId, instanceId, limit] as const,
   },
   media: {
     all: ['media'] as const,

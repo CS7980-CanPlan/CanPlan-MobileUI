@@ -10,23 +10,23 @@ import { GraphQLRequestError } from './errors';
 import { graphqlRequest } from './graphqlClient';
 import * as operations from './canplanOperations';
 import type {
-  Assignment,
-  AssignmentStep,
+  CancelTaskInstanceInput,
   Category,
   Connection,
-  CreateAssignmentInput,
   CreateCategoryInput,
   CreateMediaAssetInput,
   CreateMediaUploadUrlInput,
   CreateMyUserProfileInput,
   CreateSupportLinkInput,
+  CreateTaskAssignmentInput,
   CreateTaskCoverImageUploadUrlInput,
   CreateTaskInput,
   CreateTaskStepInput,
-  DeleteAssignmentInput,
   DeleteCategoryInput,
   DeleteMediaAssetInput,
+  DeleteTaskAssignmentInput,
   DeleteTaskStepInput,
+  EndTaskAssignmentInput,
   GenerateTaskStepsInput,
   JsonValue,
   MediaAsset,
@@ -34,15 +34,20 @@ import type {
   MediaUploadTarget,
   PageInput,
   ReorderTaskStepsInput,
-  SetAssignmentStepCompletionInput,
+  SetTaskInstanceStepCompletionInput,
+  StartTaskInstanceInput,
   SupportLink,
   Task,
+  TaskAssignment,
+  TaskInstance,
+  TaskInstanceStep,
+  TaskInstanceView,
   TaskStep,
   TaskStepsResponse,
-  UpdateAssignmentStatusInput,
   UpdateCategoryInput,
   UpdateMyUserProfileInput,
   UpdateTaskInput,
+  UpdateTaskInstanceStatusInput,
   UpdateTaskStepInput,
   UserProfile,
 } from './canplanTypes';
@@ -202,30 +207,42 @@ export const canPlanApi = {
     return data.listTasksByCategory;
   },
 
-  async listAssignmentsForUser(
+  async listTaskAssignmentsForUser(
     userId: string,
     page: PageInput = {},
-  ): Promise<Connection<Assignment>> {
+  ): Promise<Connection<TaskAssignment>> {
     const data = await graphqlRequest<
-      { listAssignmentsForUser: Connection<Assignment> },
+      { listTaskAssignmentsForUser: Connection<TaskAssignment> },
       { userId: string } & PageInput
-    >(operations.LIST_ASSIGNMENTS_FOR_USER, { userId, ...pageVariables(page) });
-    return data.listAssignmentsForUser;
+    >(operations.LIST_TASK_ASSIGNMENTS_FOR_USER, { userId, ...pageVariables(page) });
+    return data.listTaskAssignmentsForUser;
   },
 
-  async listAssignmentSteps(
+  async getTaskInstanceViews(
     userId: string,
-    assignmentId: string,
-    page: PageInput = {},
-  ): Promise<Connection<AssignmentStep>> {
+    startDate: string,
+    endDate: string,
+  ): Promise<Connection<TaskInstanceView>> {
     const data = await graphqlRequest<
-      { listAssignmentSteps: Connection<AssignmentStep> },
-      { userId: string; assignmentId: string } & PageInput
+      { getTaskInstanceViews: Connection<TaskInstanceView> },
+      { userId: string; startDate: string; endDate: string }
+    >(operations.GET_TASK_INSTANCE_VIEWS, { userId, startDate, endDate });
+    return data.getTaskInstanceViews;
+  },
+
+  async listTaskInstanceSteps(
+    userId: string,
+    instanceId: string,
+    page: PageInput = {},
+  ): Promise<Connection<TaskInstanceStep>> {
+    const data = await graphqlRequest<
+      { listTaskInstanceSteps: Connection<TaskInstanceStep> },
+      { userId: string; instanceId: string } & PageInput
     >(
-      operations.LIST_ASSIGNMENT_STEPS,
-      { userId, assignmentId, ...pageVariables(page) },
+      operations.LIST_TASK_INSTANCE_STEPS,
+      { userId, instanceId, ...pageVariables(page) },
     );
-    return data.listAssignmentSteps;
+    return data.listTaskInstanceSteps;
   },
 
   async getMediaDownloadUrl(
@@ -392,40 +409,64 @@ export const canPlanApi = {
     return data.deleteTask;
   },
 
-  async createAssignment(input: CreateAssignmentInput): Promise<Assignment | null> {
-    const data = await graphqlRequest<{ createAssignment: Assignment | null }, { input: CreateAssignmentInput }>(
-      operations.CREATE_ASSIGNMENT,
-      { input },
-    );
-    return data.createAssignment;
-  },
-
-  async updateAssignmentStatus(
-    input: UpdateAssignmentStatusInput,
-  ): Promise<Assignment | null> {
+  async createTaskAssignment(input: CreateTaskAssignmentInput): Promise<TaskAssignment> {
     const data = await graphqlRequest<
-      { updateAssignmentStatus: Assignment | null },
-      { input: UpdateAssignmentStatusInput }
-    >(operations.UPDATE_ASSIGNMENT_STATUS, { input });
-    return data.updateAssignmentStatus;
+      { createTaskAssignment: TaskAssignment },
+      { input: CreateTaskAssignmentInput }
+    >(operations.CREATE_TASK_ASSIGNMENT, { input });
+    return data.createTaskAssignment;
   },
 
-  async setAssignmentStepCompletion(
-    input: SetAssignmentStepCompletionInput,
-  ): Promise<AssignmentStep | null> {
+  async startTaskInstance(input: StartTaskInstanceInput): Promise<TaskInstance> {
     const data = await graphqlRequest<
-      { setAssignmentStepCompletion: AssignmentStep | null },
-      { input: SetAssignmentStepCompletionInput }
-    >(operations.SET_ASSIGNMENT_STEP_COMPLETION, { input });
-    return data.setAssignmentStepCompletion;
+      { startTaskInstance: TaskInstance },
+      { input: StartTaskInstanceInput }
+    >(operations.START_TASK_INSTANCE, { input });
+    return data.startTaskInstance;
   },
 
-  async deleteAssignment(input: DeleteAssignmentInput): Promise<Assignment | null> {
-    const data = await graphqlRequest<{ deleteAssignment: Assignment | null }, { input: DeleteAssignmentInput }>(
-      operations.DELETE_ASSIGNMENT,
-      { input },
-    );
-    return data.deleteAssignment;
+  async updateTaskInstanceStatus(
+    input: UpdateTaskInstanceStatusInput,
+  ): Promise<TaskInstance> {
+    const data = await graphqlRequest<
+      { updateTaskInstanceStatus: TaskInstance },
+      { input: UpdateTaskInstanceStatusInput }
+    >(operations.UPDATE_TASK_INSTANCE_STATUS, { input });
+    return data.updateTaskInstanceStatus;
+  },
+
+  async setTaskInstanceStepCompletion(
+    input: SetTaskInstanceStepCompletionInput,
+  ): Promise<TaskInstanceStep> {
+    const data = await graphqlRequest<
+      { setTaskInstanceStepCompletion: TaskInstanceStep },
+      { input: SetTaskInstanceStepCompletionInput }
+    >(operations.SET_TASK_INSTANCE_STEP_COMPLETION, { input });
+    return data.setTaskInstanceStepCompletion;
+  },
+
+  async cancelTaskInstance(input: CancelTaskInstanceInput): Promise<TaskInstance> {
+    const data = await graphqlRequest<
+      { cancelTaskInstance: TaskInstance },
+      { input: CancelTaskInstanceInput }
+    >(operations.CANCEL_TASK_INSTANCE, { input });
+    return data.cancelTaskInstance;
+  },
+
+  async endTaskAssignment(input: EndTaskAssignmentInput): Promise<TaskAssignment> {
+    const data = await graphqlRequest<
+      { endTaskAssignment: TaskAssignment },
+      { input: EndTaskAssignmentInput }
+    >(operations.END_TASK_ASSIGNMENT, { input });
+    return data.endTaskAssignment;
+  },
+
+  async deleteTaskAssignment(input: DeleteTaskAssignmentInput): Promise<TaskAssignment> {
+    const data = await graphqlRequest<
+      { deleteTaskAssignment: TaskAssignment },
+      { input: DeleteTaskAssignmentInput }
+    >(operations.DELETE_TASK_ASSIGNMENT, { input });
+    return data.deleteTaskAssignment;
   },
 
   async createMediaUploadUrl(
