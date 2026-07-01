@@ -18,7 +18,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  clearOccurrenceStatus,
   occurrenceKey,
   setOccurrenceStatus,
   toggleOccurrenceStep,
@@ -578,61 +577,6 @@ export default function TaskViewScreen() {
     [isInstance, ownerId, ensureInstance, updateStatus, setStepCompletion, stepsQuery.data, occKey, navigation],
   );
 
-  // Un-skip, using only the existing API (no "reset to TODO" mutation exists):
-  // re-start the occurrence (which may reset it to TO_DO); if the backend leaves
-  // it SKIPPED — or rejects re-starting — force it out of the terminal state via
-  // IN_PROGRESS, which the app treats as live/active again. The feed then
-  // re-derives TO_DO vs OVERDUE from the scheduled time.
-  const unskipOccurrence = useCallback(async () => {
-    if (!isInstance || !ownerId) {
-      return;
-    }
-    setFinishError(undefined);
-    try {
-      let id = instanceId;
-      try {
-        const restarted = await startInstance.mutateAsync({
-          userId: ownerId,
-          assignmentId: assignmentId as string,
-          scheduledDate: scheduledDate as string,
-          scheduledTime: scheduledTime as string,
-        });
-        id = restarted.instanceId;
-        setInstanceId(restarted.instanceId);
-        if (restarted.status === 'SKIPPED') {
-          await updateStatus.mutateAsync({
-            userId: ownerId,
-            instanceId: restarted.instanceId,
-            status: 'IN_PROGRESS',
-          });
-        }
-      } catch {
-        if (!id) {
-          throw new Error('Could not un-skip this occurrence.');
-        }
-        await updateStatus.mutateAsync({ userId: ownerId, instanceId: id, status: 'IN_PROGRESS' });
-      }
-      if (occKey) {
-        clearOccurrenceStatus(occKey);
-      }
-      navigation.goBack();
-    } catch (error) {
-      setFinishError(
-        error instanceof Error ? error.message : 'Could not un-skip. Please try again.',
-      );
-    }
-  }, [
-    isInstance,
-    ownerId,
-    instanceId,
-    assignmentId,
-    scheduledDate,
-    scheduledTime,
-    startInstance,
-    updateStatus,
-    occKey,
-    navigation,
-  ]);
 
   const steps = useMemo(
     () =>
@@ -807,22 +751,21 @@ export default function TaskViewScreen() {
               <Text style={[styles.statusNoticeText, { color: colors.success }]}>Completed</Text>
             </View>
           ) : isSkippedOcc ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Un-skip this task"
-              accessibilityState={{ disabled: isFinishing }}
-              disabled={isFinishing}
-              onPress={() => void unskipOccurrence()}
-              style={({ pressed }) => [
-                styles.statusNotice,
-                pressed && !isFinishing ? styles.pressed : null,
-              ]}
-            >
-              <Ionicons name="arrow-undo" size={20} color={colors.primary} />
-              <Text style={[styles.statusNoticeText, { color: colors.primary }]}>
-                {isFinishing ? 'Saving…' : 'Skipped — tap to un-skip'}
-              </Text>
-            </Pressable>
+            // Un-skip needs a backend "reopen" mutation that doesn't exist yet
+            // (the API rejects any status change on a SKIPPED instance), so the
+            // control is shown disabled rather than firing a guaranteed error.
+            <View>
+              <View
+                accessibilityRole="button"
+                accessibilityState={{ disabled: true }}
+                accessibilityLabel="Un-skip (not available yet)"
+                style={[styles.statusNotice, styles.statusNoticeDisabled]}
+              >
+                <Ionicons name="arrow-undo" size={20} color={colors.disabled} />
+                <Text style={[styles.statusNoticeText, { color: colors.disabled }]}>Un-skip</Text>
+              </View>
+              <Text style={styles.statusHint}>Un-skip isn’t available yet.</Text>
+            </View>
           ) : allDone ? (
             <Pressable
               accessibilityRole="button"
@@ -1227,9 +1170,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#EAF7EF',
     borderColor: '#BFE6CE',
   },
+  statusNoticeDisabled: {
+    backgroundColor: colors.surfaceWarm,
+    borderColor: colors.border,
+  },
   statusNoticeText: {
     ...typography.button,
     color: colors.textMuted,
+  },
+  statusHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.sm,
   },
   pressed: {
     opacity: 0.72,
