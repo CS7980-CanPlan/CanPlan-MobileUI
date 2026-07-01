@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -31,11 +32,16 @@ import {
   useCompletedSteps,
   useOccurrenceStatuses,
 } from '../features/assignments/occurrenceCompletion';
+import { describeRepeat } from '../features/assignments/repeat';
 import { useMediaDownloadUrl } from '../features/media/hooks/useMedia';
 import { useTasksByOwner, useTaskSteps } from '../features/tasks/hooks/useTaskApi';
 import type { MainStackParamList } from '../navigation/types';
 import { getCurrentUserId } from '../shared/api/authTokenProvider';
-import type { TaskInstanceStatus, TaskInstanceView } from '../shared/api/canplanTypes';
+import type {
+  TaskAssignment,
+  TaskInstanceStatus,
+  TaskInstanceView,
+} from '../shared/api/canplanTypes';
 import BackButton from '../shared/components/BackButton';
 import CachedImage from '../shared/components/CachedImage';
 import { colors, radius, shadow, spacing, typography } from '../shared/theme/tokens';
@@ -88,6 +94,17 @@ function bucketOf(status: TaskInstanceStatus): StatusKey | null {
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const toISODate = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/** Hour → slot range, e.g. 20 → "20:00 - 21:00", 23 → "23:00 - 00:00". */
+const slotLabel = (hour: number) => `${pad2(hour)}:00 - ${pad2((hour + 1) % 24)}:00`;
+/** "2026-07-02" → "Thu, Jul 2". */
+const formatShortDate = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+};
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const startOfWeek = (d: Date) => addDays(d, -d.getDay());
 const isSameDay = (a: Date, b: Date) =>
@@ -129,28 +146,34 @@ function TaskCover({
 
 const THUMB_SIZE = 48;
 
+/** One distinct task cover in a day's collage, plus whether it's not yet materialized. */
+type DayThumbItem = { taskId: string; gray: boolean };
+
 function DayThumbGrid({
-  taskIds,
+  items,
   coverByTask,
 }: {
-  taskIds: string[];
+  items: DayThumbItem[];
   coverByTask: Map<string, string | null | undefined>;
 }) {
   // Each cover gets its own equal square tile (WeChat-group-avatar style) so
   // covers show in full rather than being stretched into tall side-by-side
   // strips. Partial rows are centered by the container's justify/alignContent.
-  const cols = taskIds.length <= 1 ? 1 : taskIds.length <= 4 ? 2 : 3;
+  const cols = items.length <= 1 ? 1 : items.length <= 4 ? 2 : 3;
   const tile = Math.floor(THUMB_SIZE / cols);
   return (
     <View style={styles.monthThumb}>
-      {taskIds.map((id) => (
-        <TaskCover
-          key={id}
-          taskId={id}
-          assetId={coverByTask.get(id)}
-          style={{ width: tile, height: tile }}
-          iconSize={10}
-        />
+      {items.map(({ taskId, gray }, index) => (
+        <View key={`${taskId}-${index}`} style={{ width: tile, height: tile }}>
+          <TaskCover
+            taskId={taskId}
+            assetId={coverByTask.get(taskId)}
+            style={StyleSheet.absoluteFill}
+            iconSize={10}
+          />
+          {/* Not-yet-materialized days read as grey; materialized show in colour. */}
+          {gray ? <View style={styles.thumbGrayVeil} pointerEvents="none" /> : null}
+        </View>
       ))}
     </View>
   );
@@ -164,6 +187,7 @@ function AssignmentCard({
   coverAssetId,
   state,
   isRecurring,
+  repeatLabel,
   onPress,
 }: {
   view: TaskInstanceView;
@@ -171,6 +195,8 @@ function AssignmentCard({
   coverAssetId?: string | null;
   state: OccurrenceLifeState;
   isRecurring: boolean;
+  /** Recurrence type (e.g. "Daily") shown next to the time; omitted for one-time. */
+  repeatLabel?: string;
   onPress: () => void;
 }) {
   // "Gray" occurrences (projected days after the active one) are inert: dimmed
@@ -190,65 +216,75 @@ function AssignmentCard({
         .length)
     : 0;
 
+  // Title + time/repeat + steps — shared by both layouts.
+  const textBlock = (
+    <View style={styles.taskTextWrap}>
+      <Text
+        style={[
+          styles.taskTitle,
+          isDone ? styles.taskTitleDone : isGray ? styles.taskTitleFuture : null,
+        ]}
+      >
+        {view.title}
+      </Text>
+      <View style={styles.taskMetaRow}>
+        {isRecurring ? (
+          <Ionicons
+            name="repeat"
+            size={14}
+            color={isGray ? colors.disabled : colors.textMuted}
+            accessibilityLabel="Repeats"
+          />
+        ) : null}
+        <Text style={[styles.taskMeta, styles.taskMetaInline]}>
+          {repeatLabel ? `${view.scheduledTime} · ${repeatLabel}` : view.scheduledTime}
+        </Text>
+      </View>
+      <Text style={styles.taskMeta}>
+        {doneSteps}/{totalSteps} steps
+      </Text>
+    </View>
+  );
+
+  const statusTag = (
+    <View style={[styles.statusTag, { backgroundColor: STATUS_ACCENT[bucket] }]}>
+      <Text style={styles.statusTagText}>{STATUS_LABEL[bucket]}</Text>
+    </View>
+  );
+
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: isGray }}
       accessibilityLabel={`${view.title}, ${view.scheduledTime}, ${doneSteps} of ${totalSteps} steps${
         isGray ? ', not active yet' : ''
       }`}
-      disabled={isGray}
       onPress={onPress}
       style={({ pressed }) => [
         styles.taskCard,
         isGray ? styles.taskCardGray : null,
-        pressed && !isGray ? styles.taskCardPressed : null,
+        pressed ? styles.taskCardPressed : null,
       ]}
     >
-      <TaskCover
-        taskId={view.taskId}
-        assetId={coverAssetId}
-        style={styles.taskImage}
-        dimmed={isGray}
-      />
-      <View style={styles.taskBody}>
-        <View
-          style={[
-            styles.taskAccent,
-            { backgroundColor: isGray ? colors.disabled : STATUS_ACCENT[bucket] },
-          ]}
-        />
-        <View style={styles.taskTextWrap}>
-          <Text
-            style={[
-              styles.taskTitle,
-              isDone ? styles.taskTitleDone : isGray ? styles.taskTitleFuture : null,
-            ]}
-          >
-            {view.title}
-          </Text>
-          <View style={styles.taskMetaRow}>
-            {isRecurring ? (
-              <Ionicons
-                name="repeat"
-                size={14}
-                color={isGray ? colors.disabled : colors.textMuted}
-                accessibilityLabel="Repeats"
-              />
-            ) : null}
-            <Text style={[styles.taskMeta, styles.taskMetaInline]}>{view.scheduledTime}</Text>
+      {isGray ? (
+        // Not-yet-materialized: a compact row with the cover as a left thumbnail.
+        <View style={styles.grayRow}>
+          <TaskCover taskId={view.taskId} assetId={coverAssetId} style={styles.grayThumb} iconSize={20} />
+          {textBlock}
+          {statusTag}
+          <Ionicons name="information-circle-outline" size={24} color={colors.disabled} />
+        </View>
+      ) : (
+        // Materialized: the full-width cover photo on top of the detail row.
+        <>
+          <TaskCover taskId={view.taskId} assetId={coverAssetId} style={styles.taskImage} />
+          <View style={styles.taskBody}>
+            <View style={[styles.taskAccent, { backgroundColor: STATUS_ACCENT[bucket] }]} />
+            {textBlock}
+            {statusTag}
+            <Ionicons name="chevron-forward" size={24} color={colors.primary} />
           </View>
-          <Text style={styles.taskMeta}>
-            {doneSteps}/{totalSteps} steps
-          </Text>
-        </View>
-        <View style={[styles.statusTag, { backgroundColor: STATUS_ACCENT[bucket] }]}>
-          <Text style={styles.statusTagText}>{STATUS_LABEL[bucket]}</Text>
-        </View>
-        {isGray ? null : (
-          <Ionicons name="chevron-forward" size={24} color={colors.primary} />
-        )}
-      </View>
+        </>
+      )}
     </Pressable>
   );
 }
@@ -260,6 +296,8 @@ function MonthPickerModal({
   ownerId,
   initialDate,
   coverByTask,
+  activeDates,
+  today,
   onClose,
   onSelectDay,
 }: {
@@ -267,10 +305,13 @@ function MonthPickerModal({
   ownerId: string;
   initialDate: Date;
   coverByTask: Map<string, string | null | undefined>;
+  activeDates: ReadonlyMap<string, string>;
+  today: Date;
   onClose: () => void;
   onSelectDay: (date: Date) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const statusOverrides = useOccurrenceStatuses();
   const [viewDate, setViewDate] = useState(initialDate);
 
   // Re-sync to the current selection whenever the sheet is reopened.
@@ -291,19 +332,45 @@ function MonthPickerModal({
     toISODate(monthEnd),
   );
 
-  // date string → distinct task ids scheduled that day (max 9), for the
-  // WeChat-group-style thumbnail collage.
+  // date string → up to 9 distinct task covers scheduled that day, each flagged
+  // gray when that day's occurrence isn't materialized yet. A materialized
+  // occurrence of the same task wins (color) over a gray one.
   const tasksByDate = useMemo(() => {
-    const map = new Map<string, string[]>();
+    const todayISO = toISODate(today);
+    const byDate = new Map<string, Map<string, boolean>>();
     for (const v of viewsQuery.data?.items ?? []) {
-      const list = map.get(v.scheduledDate) ?? [];
-      if (!list.includes(v.taskId) && list.length < 9) {
-        list.push(v.taskId);
+      let covers = byDate.get(v.scheduledDate);
+      if (!covers) {
+        covers = new Map<string, boolean>();
+        byDate.set(v.scheduledDate, covers);
       }
-      map.set(v.scheduledDate, list);
+      const override = statusOverrides.get(
+        occurrenceKey(v.assignmentId, v.scheduledDate, v.scheduledTime),
+      );
+      const gray =
+        occurrenceState({
+          scheduledDate: v.scheduledDate,
+          status: override ?? v.status,
+          activeDate: activeDates.get(v.assignmentId),
+          todayISO,
+        }) === 'gray';
+      if (covers.has(v.taskId)) {
+        if (!gray) {
+          covers.set(v.taskId, false);
+        }
+      } else if (covers.size < 9) {
+        covers.set(v.taskId, gray);
+      }
     }
-    return map;
-  }, [viewsQuery.data]);
+    const result = new Map<string, DayThumbItem[]>();
+    for (const [date, covers] of byDate) {
+      result.set(
+        date,
+        [...covers.entries()].map(([taskId, gray]) => ({ taskId, gray })),
+      );
+    }
+    return result;
+  }, [viewsQuery.data, statusOverrides, activeDates, today]);
 
   const cells = useMemo<Array<number | null>>(() => {
     const firstWeekday = monthStart.getDay();
@@ -370,7 +437,7 @@ function MonthPickerModal({
               }
               const date = new Date(year, month, day);
               const iso = toISODate(date);
-              const dayTaskIds = tasksByDate.get(iso) ?? [];
+              const dayItems = tasksByDate.get(iso) ?? [];
               return (
                 <Pressable
                   key={day}
@@ -379,13 +446,13 @@ function MonthPickerModal({
                   onPress={() => onSelectDay(date)}
                   style={styles.monthCell}
                 >
-                  {dayTaskIds.length > 0 ? (
-                    <DayThumbGrid taskIds={dayTaskIds} coverByTask={coverByTask} />
+                  {dayItems.length > 0 ? (
+                    <DayThumbGrid items={dayItems} coverByTask={coverByTask} />
                   ) : null}
                   <Text
                     style={[
                       styles.monthDayText,
-                      dayTaskIds.length > 0 ? styles.monthDayTextOnImage : null,
+                      dayItems.length > 0 ? styles.monthDayTextOnImage : null,
                     ]}
                   >
                     {day}
@@ -409,7 +476,7 @@ function DayAssignmentsPage({
   ownerId,
   activeStatus,
   coverByTask,
-  recurringAssignments,
+  assignmentById,
   activeDates,
   today,
   bottomPadding,
@@ -421,7 +488,7 @@ function DayAssignmentsPage({
   ownerId: string;
   activeStatus: StatusKey;
   coverByTask: Map<string, string | null | undefined>;
-  recurringAssignments: ReadonlySet<string>;
+  assignmentById: ReadonlyMap<string, TaskAssignment>;
   activeDates: ReadonlyMap<string, string>;
   today: Date;
   bottomPadding: number;
@@ -444,6 +511,22 @@ function DayAssignmentsPage({
     return result;
   }, [viewsQuery.data, statusOverrides, activeStatus]);
 
+  // Group the day's occurrences into hour slots (20:00 → "20:00 - 21:00") so
+  // times read as ranges under prominent slot headers.
+  const groups = useMemo(() => {
+    const byHour = new Map<number, TaskInstanceView[]>();
+    for (const view of views) {
+      const hour = Number(view.scheduledTime.split(':')[0]) || 0;
+      const list = byHour.get(hour);
+      if (list) {
+        list.push(view);
+      } else {
+        byHour.set(hour, [view]);
+      }
+    }
+    return [...byHour.entries()].sort((a, b) => a[0] - b[0]);
+  }, [views]);
+
   const isLoading = viewsQuery.isLoading || !ownerId;
   const todayISO = toISODate(today);
 
@@ -462,28 +545,49 @@ function DayAssignmentsPage({
       ) : views.length === 0 ? (
         <Text style={styles.stateText}>Nothing here for this day.</Text>
       ) : (
-        views.map((view) => {
-          const override = statusOverrides.get(
-            occurrenceKey(view.assignmentId, view.scheduledDate, view.scheduledTime),
-          );
-          const state = occurrenceState({
-            scheduledDate: view.scheduledDate,
-            status: override ?? view.status,
-            activeDate: activeDates.get(view.assignmentId),
-            todayISO,
-          });
-          return (
-            <AssignmentCard
-              key={`${view.assignmentId}-${view.scheduledFor}`}
-              view={view}
-              bucket={activeStatus}
-              coverAssetId={coverByTask.get(view.taskId)}
-              state={state}
-              isRecurring={recurringAssignments.has(view.assignmentId)}
-              onPress={() => onOpen(view)}
-            />
-          );
-        })
+        groups.map(([hour, groupViews]) => (
+          <View key={hour} style={styles.slotGroup}>
+            <Text style={styles.slotHeader}>{slotLabel(hour)}</Text>
+            {groupViews.map((view) => {
+              const override = statusOverrides.get(
+                occurrenceKey(view.assignmentId, view.scheduledDate, view.scheduledTime),
+              );
+              const assignment = assignmentById.get(view.assignmentId);
+              const isRecurring = assignment?.scheduleType === 'RECURRING';
+              const activeDate = activeDates.get(view.assignmentId);
+              const state = occurrenceState({
+                scheduledDate: view.scheduledDate,
+                status: override ?? view.status,
+                activeDate,
+                todayISO,
+              });
+              // Gray days aren't operable, but tapping explains why and points to
+              // the current (most recently materialized) occurrence to act on.
+              const handlePress =
+                state === 'gray'
+                  ? () =>
+                      Alert.alert(
+                        'Not active yet',
+                        activeDate
+                          ? `This day hasn’t started in the series yet — it’s not materialized. Open the current task on ${formatShortDate(activeDate)} to delete this or all future occurrences.`
+                          : 'This day hasn’t started in the series yet — it’s not materialized. Open the current task to delete this or all future occurrences.',
+                      )
+                  : () => onOpen(view);
+              return (
+                <AssignmentCard
+                  key={`${view.assignmentId}-${view.scheduledFor}`}
+                  view={view}
+                  bucket={activeStatus}
+                  coverAssetId={coverByTask.get(view.taskId)}
+                  state={state}
+                  isRecurring={isRecurring}
+                  repeatLabel={isRecurring ? describeRepeat(assignment) : undefined}
+                  onPress={handlePress}
+                />
+              );
+            })}
+          </View>
+        ))
       )}
     </ScrollView>
   );
@@ -520,18 +624,15 @@ export default function CalendarScreen() {
   const tasksQuery = useTasksByOwner(ownerId);
   const assignmentsQuery = useAssignmentsForUser(ownerId);
 
-  // assignmentId → is it a repeating series? Drives the calendar's "repeat" hint
-  // that marks an occurrence as derived from a recurrence rule.
-  const recurringAssignments = useMemo(() => {
-    const set = new Set<string>();
+  // assignmentId → its assignment, for the card's repeat icon + type label.
+  const assignmentById = useMemo(() => {
+    const map = new Map<string, TaskAssignment>();
     for (const page of assignmentsQuery.data?.pages ?? []) {
       for (const assignment of page.items) {
-        if (assignment.scheduleType === 'RECURRING') {
-          set.add(assignment.assignmentId);
-        }
+        map.set(assignment.assignmentId, assignment);
       }
     }
-    return set;
+    return map;
   }, [assignmentsQuery.data]);
 
   // assignmentId → the series' current active occurrence date (earliest
@@ -711,7 +812,7 @@ export default function CalendarScreen() {
                 ownerId={ownerId}
                 activeStatus={activeStatus}
                 coverByTask={coverByTask}
-                recurringAssignments={recurringAssignments}
+                assignmentById={assignmentById}
                 activeDates={activeDates}
                 today={today}
                 bottomPadding={insets.bottom + spacing.xxl}
@@ -750,6 +851,8 @@ export default function CalendarScreen() {
         ownerId={ownerId}
         initialDate={selected}
         coverByTask={coverByTask}
+        activeDates={activeDates}
+        today={today}
         onClose={() => setMonthPickerVisible(false)}
         onSelectDay={(date) => {
           setSelected(date);
@@ -893,6 +996,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingTop: spacing.xxl,
   },
+  slotGroup: {
+    gap: spacing.md,
+  },
+  slotHeader: {
+    ...typography.heading,
+    color: colors.text,
+  },
   taskCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -920,6 +1030,18 @@ const styles = StyleSheet.create({
   taskBody: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  // Compact "not materialized" layout: cover as a left thumbnail.
+  grayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: spacing.lg,
+    gap: spacing.sm,
+  },
+  grayThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.md,
   },
   taskAccent: {
     width: 6,
@@ -1061,6 +1183,10 @@ const styles = StyleSheet.create({
     height: 56,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  thumbGrayVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(181,175,165,0.72)',
   },
   monthThumb: {
     position: 'absolute',
